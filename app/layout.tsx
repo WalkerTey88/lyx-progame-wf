@@ -1,9 +1,6 @@
-import type { Metadata } from "next";
-import "./globals.css";
-
-export const metadata: Metadata = {
-  title: "Walter Farm",
-  description: "Walter Farm Official Website",
+export const metadata = {
+  title: "Walter Farm – Segamat, Johor",
+  description: "A family-friendly farm experience in Segamat, Johor.",
 };
 
 export default function RootLayout({

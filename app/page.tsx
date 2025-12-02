@@ -1,5 +1,3 @@
-import Image from "next/image";
-
 export default function HomePage() {
   return (
     <div className="space-y-10">
@@ -28,8 +26,8 @@ export default function HomePage() {
             </a>
           </div>
         </div>
-
         <div className="h-48 md:h-64 rounded-xl bg-neutral-200 flex items-center justify-center text-xs text-neutral-500">
+          {/* TODO: Replace with actual farm image */}
           Farm image placeholder
         </div>
       </section>
@@ -55,17 +53,16 @@ export default function HomePage() {
             from the booking system.
           </p>
         </a>
-
         <a
           href="/activities"
           className="rounded-lg border bg-white p-4 hover:border-green-600 hover:shadow-sm transition"
         >
           <h3 className="font-semibold mb-1">Activities</h3>
           <p className="text-neutral-700">
-            Real farm activities such as animal interactions and outdoor experiences.
+            Real farm activities such as animal interactions and outdoor
+            experiences.
           </p>
         </a>
-
         <a
           href="/booking"
           className="rounded-lg border bg-white p-4 hover:border-green-600 hover:shadow-sm transition"
