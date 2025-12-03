@@ -1,80 +1,72 @@
-// components/Navbar.tsx
-// A responsive navigation bar component. It highlights the current page and
-// collapses into a mobile menu on smaller screens.
-"use client";
+'use client';
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useState } from "react";
-
-const navItems = [
-  { href: "/", label: "Home" },
-  { href: "/accommodation", label: "Accommodation" },
-  { href: "/activities", label: "Activities" },
-  { href: "/facilities", label: "Facilities" },
-  { href: "/gallery", label: "Gallery" },
-  { href: "/location", label: "Location" },
-  { href: "/booking", label: "Booking" },
-  { href: "/contact", label: "Contact" },
-];
+import { useState } from 'react';
+import Link from 'next-intl/link';
+import { useTranslations, useLocale } from 'next-intl';
 
 export default function Navbar() {
-  const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const t = useTranslations('Navbar');
+  const locale = useLocale();
+
+  const navItems = [
+    { href: '/accommodation', labelKey: 'accommodation' },
+    { href: '/activities', labelKey: 'activities' },
+    { href: '/facilities', labelKey: 'facilities' },
+    { href: '/gallery', labelKey: 'gallery' },
+    { href: '/location', labelKey: 'location' },
+    { href: '/booking', labelKey: 'booking' },
+    { href: '/contact', labelKey: 'contact' }
+  ];
 
   return (
-    <header className="border-b bg-white/80 backdrop-blur">
-      <nav className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-        <Link href="/" className="font-semibold text-lg tracking-tight">
+    <nav className="border-b bg-white">
+      <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+        <Link href="/" locale={locale} className="font-bold text-xl">
           Walter Farm
         </Link>
-        {/* Desktop menu */}
-        <ul className="hidden md:flex items-center gap-4 text-sm">
-          {navItems.map((item) => (
-            <li key={item.href}>
-              <Link
-                href={item.href}
-                className={`px-2 py-1 rounded ${
-                  pathname === item.href
-                    ? "text-green-700 font-semibold"
-                    : "text-neutral-700 hover:text-green-700"
-                }`}
-              >
-                {item.label}
+
+        <div className="flex items-center space-x-3">
+          <div className="hidden md:flex space-x-6">
+            {navItems.map((item) => (
+              <Link key={item.href} href={item.href} locale={locale}>
+                {t(item.labelKey)}
               </Link>
-            </li>
-          ))}
-        </ul>
-        {/* Mobile menu button */}
-        <button
-          className="md:hidden inline-flex items-center justify-center rounded border px-2 py-1 text-sm"
-          onClick={() => setOpen((v) => !v)}
-        >
-          Menu
-        </button>
-      </nav>
-      {/* Mobile menu */}
+            ))}
+          </div>
+
+          <div className="flex items-center space-x-2 text-sm">
+            <Link href="/" locale="en">
+              EN
+            </Link>
+            <span>|</span>
+            <Link href="/" locale="zh">
+              中文
+            </Link>
+          </div>
+
+          <button
+            className="md:hidden border px-3 py-1 rounded"
+            onClick={() => setOpen(!open)}
+          >
+            {t('menu')}
+          </button>
+        </div>
+      </div>
+
       {open && (
-        <div className="md:hidden border-t bg-white">
-          <ul className="max-w-6xl mx-auto px-4 py-2 flex flex-col gap-1 text-sm">
+        <div className="md:hidden px-4 py-2 border-t">
+          <ul className="space-y-2">
             {navItems.map((item) => (
               <li key={item.href}>
-                <Link
-                  href={item.href}
-                  className={`block px-2 py-2 rounded ${
-                    pathname === item.href
-                      ? "text-green-700 font-semibold bg-green-50"
-                      : "text-neutral-700 hover:bg-neutral-100"
-                  }`}
-                  onClick={() => setOpen(false)}
-                >
-                  {item.label}
+                <Link href={item.href} locale={locale} onClick={() => setOpen(false)}>
+                  {t(item.labelKey)}
                 </Link>
               </li>
             ))}
           </ul>
         </div>
       )}
-    </header>
+    </nav>
   );
 }
