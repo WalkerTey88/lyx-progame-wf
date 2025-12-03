@@ -33,15 +33,12 @@ export default function AccommodationPage() {
     <div className="space-y-8">
       <h1 className="text-2xl md:text-3xl font-semibold">Accommodation</h1>
       <p className="text-sm md:text-base text-neutral-700 max-w-2xl">
-        Choose from a range of farm‑style stays designed for couples, families and groups. Each
-        accommodation type offers unique amenities and a comfortable base from which to explore Walter
-        Farm.
+        Choose from a range of farm‑style stays designed for couples, families and groups. Each accommodation type offers unique amenities and a comfortable base from which to explore Walter Farm.
       </p>
       <div className="grid md:grid-cols-2 gap-6">
         {accommodations.map((item) => (
           <div key={item.id} className="overflow-hidden rounded-lg border bg-white shadow-sm">
             <div className="relative h-40">
-              {/* TODO: 将图片替换为对应住宿照片 */}
               <Image
                 src={item.image}
                 alt={item.title}

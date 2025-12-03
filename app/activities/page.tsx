@@ -31,15 +31,12 @@ export default function ActivitiesPage() {
     <div className="space-y-8">
       <h1 className="text-2xl md:text-3xl font-semibold">Activities</h1>
       <p className="text-sm md:text-base text-neutral-700 max-w-2xl">
-        Immerse yourself in the farm life by participating in our curated activities. Whether you
-        enjoy feeding animals, exploring nature or getting your hands dirty in the garden, there is
-        something for everyone.
+        Immerse yourself in the farm life by participating in our curated activities. Whether you enjoy feeding animals, exploring nature or getting your hands dirty in the garden, there is something for everyone.
       </p>
       <div className="grid md:grid-cols-2 gap-6">
         {activities.map((activity) => (
           <div key={activity.id} className="overflow-hidden rounded-lg border bg-white shadow-sm">
             <div className="relative h-40">
-              {/* TODO: 将图片替换为活动照片 */}
               <Image
                 src={activity.image}
                 alt={activity.title}
