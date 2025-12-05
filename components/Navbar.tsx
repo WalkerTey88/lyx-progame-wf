@@ -1,72 +1,39 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import Link from 'next-intl/link';
-import { useTranslations, useLocale } from 'next-intl';
+import Link from "next/link";
+import { useState } from "react";
 
 export default function Navbar() {
   const [open, setOpen] = useState(false);
-  const t = useTranslations('Navbar');
-  const locale = useLocale();
-
-  const navItems = [
-    { href: '/accommodation', labelKey: 'accommodation' },
-    { href: '/activities', labelKey: 'activities' },
-    { href: '/facilities', labelKey: 'facilities' },
-    { href: '/gallery', labelKey: 'gallery' },
-    { href: '/location', labelKey: 'location' },
-    { href: '/booking', labelKey: 'booking' },
-    { href: '/contact', labelKey: 'contact' }
-  ];
 
   return (
-    <nav className="border-b bg-white">
-      <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-        <Link href="/" locale={locale} className="font-bold text-xl">
+    <nav className="border-b bg-white sticky top-0 z-50">
+      <div className="mx-auto max-w-6xl px-4 py-4 flex items-center justify-between">
+        <Link href="/" className="text-xl font-bold">
           Walter Farm
         </Link>
 
-        <div className="flex items-center space-x-3">
-          <div className="hidden md:flex space-x-6">
-            {navItems.map((item) => (
-              <Link key={item.href} href={item.href} locale={locale}>
-                {t(item.labelKey)}
-              </Link>
-            ))}
-          </div>
+        <button
+          onClick={() => setOpen(!open)}
+          className="md:hidden block text-gray-700"
+        >
+          ☰
+        </button>
 
-          <div className="flex items-center space-x-2 text-sm">
-            <Link href="/" locale="en">
-              EN
-            </Link>
-            <span>|</span>
-            <Link href="/" locale="zh">
-              中文
-            </Link>
-          </div>
-
-          <button
-            className="md:hidden border px-3 py-1 rounded"
-            onClick={() => setOpen(!open)}
-          >
-            {t('menu')}
-          </button>
+        <div
+          className={`md:flex gap-6 font-medium ${
+            open ? "block" : "hidden"
+          } md:block`}
+        >
+          <Link href="/accommodation">Accommodation</Link>
+          <Link href="/activities">Activities</Link>
+          <Link href="/facilities">Facilities</Link>
+          <Link href="/gallery">Gallery</Link>
+          <Link href="/location">Location</Link>
+          <Link href="/booking">Booking</Link>
+          <Link href="/contact">Contact</Link>
         </div>
       </div>
-
-      {open && (
-        <div className="md:hidden px-4 py-2 border-t">
-          <ul className="space-y-2">
-            {navItems.map((item) => (
-              <li key={item.href}>
-                <Link href={item.href} locale={locale} onClick={() => setOpen(false)}>
-                  {t(item.labelKey)}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
     </nav>
   );
 }
