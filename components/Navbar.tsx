@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next-intl/link';
+import Link from 'next/link';
 import { useTranslations, useLocale } from 'next-intl';
 
 export default function Navbar() {
@@ -22,25 +22,25 @@ export default function Navbar() {
   return (
     <nav className="border-b bg-white">
       <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-        <Link href="/" locale={locale} className="font-bold text-xl">
+        <Link href={`/${locale}`} className="font-bold text-xl">
           Walter Farm
         </Link>
 
         <div className="flex items-center space-x-3">
           <div className="hidden md:flex space-x-6">
             {navItems.map((item) => (
-              <Link key={item.href} href={item.href} locale={locale}>
+              <Link key={item.href} href={`/${locale}${item.href}`}>
                 {t(item.labelKey)}
               </Link>
             ))}
           </div>
 
           <div className="flex items-center space-x-2 text-sm">
-            <Link href="/" locale="en">
+            <Link href={`/en`}>
               EN
             </Link>
             <span>|</span>
-            <Link href="/" locale="zh">
+            <Link href={`/zh`}>
               中文
             </Link>
           </div>
@@ -59,7 +59,7 @@ export default function Navbar() {
           <ul className="space-y-2">
             {navItems.map((item) => (
               <li key={item.href}>
-                <Link href={item.href} locale={locale} onClick={() => setOpen(false)}>
+                <Link href={`/${locale}${item.href}`} onClick={() => setOpen(false)}>
                   {t(item.labelKey)}
                 </Link>
               </li>

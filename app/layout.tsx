@@ -1,7 +1,8 @@
 import "./globals.css";
 import { ReactNode } from "react";
-import Header from "../components/ui/Header";
-import Footer from "../components/ui/Footer";
+import { Analytics } from "@vercel/analytics/next";
+import Header from "../components/Header";
+import Footer from "../components/Footer";
 
 export const metadata = {
   title: "Walter Farm – Segamat, Johor",
@@ -15,6 +16,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <Header />
         <main className="container mx-auto p-4">{children}</main>
         <Footer />
+        <Analytics />
       </body>
     </html>
   );
