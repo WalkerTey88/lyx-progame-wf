@@ -5,6 +5,8 @@ export interface Room {
   description?: string;
   capacity: number;
   price: number;
+  gallery?: Gallery[];
+  facilities?: RoomFacility[];
   createdAt: string;
   updatedAt: string;
 }
@@ -26,6 +28,13 @@ export interface Facility {
   name: string;
   icon?: string;
   description?: string;
+}
+
+export interface RoomFacility {
+  id?: string;
+  roomId?: string;
+  facilityId?: string;
+  facility?: Facility;
 }
 
 export interface Gallery {
