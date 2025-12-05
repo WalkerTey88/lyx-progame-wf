@@ -25,8 +25,7 @@ export default function BookingPage() {
     if (room && startDate && endDate) {
       const start = new Date(startDate);
       const end = new Date(endDate);
-      const nights =
-        (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
+      const nights = (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
       if (nights > 0) {
         setTotalPrice(room.price * nights);
       } else {
@@ -108,6 +107,7 @@ export default function BookingPage() {
                   required
                 />
               </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Check-out date
