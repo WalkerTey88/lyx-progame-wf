@@ -1,20 +1,23 @@
 import "./globals.css";
-import { ReactNode } from "react";
-import Header from "../components/ui/Header";
-import Footer from "../components/ui/Footer";
+import { Analytics } from "@vercel/analytics/react";
+import Navbar from "../components/Navbar";
+import Footer from "../components/Footer";
 
 export const metadata = {
-  title: "Walter Farm – Segamat, Johor",
-  description: "Farm stay booking in Segamat",
+  title: "Walter Farm",
+  description: "Walter Farm Official Website",
 };
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default function RootLayout({ children }) {
   return (
     <html lang="en">
-      <body className="bg-white text-gray-800 font-sans">
-        <Header />
-        <main className="container mx-auto p-4">{children}</main>
+      <body className="min-h-screen flex flex-col bg-white text-gray-900">
+        <Navbar />
+        <main className="flex-1 w-full max-w-6xl mx-auto px-4 py-6">
+          {children}
+        </main>
         <Footer />
+        <Analytics />
       </body>
     </html>
   );
