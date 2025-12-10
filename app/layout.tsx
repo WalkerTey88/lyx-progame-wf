@@ -3,6 +3,9 @@ import "./globals.css";
 import type { Metadata } from "next";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+// @ts-ignore  // 临时忽略 TS 对 @vercel/speed-insights/next 的类型检查
+import { SpeedInsights } from "@vercel/speed-insights/next";
+
 
 export const metadata: Metadata = {
   title: "Walters Farm Segamat",
@@ -23,6 +26,9 @@ export default function RootLayout({
           <main className="flex-1">{children}</main>
           <Footer />
         </div>
+
+        {/* Vercel Speed Insights，全局性能监控 */}
+        <SpeedInsights />
       </body>
     </html>
   );

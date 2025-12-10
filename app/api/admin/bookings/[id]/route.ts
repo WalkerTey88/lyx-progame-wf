@@ -1,7 +1,9 @@
 // app/api/admin/bookings/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import type { BookingStatus } from '@prisma/client';
+
+// 本地定义 BookingStatus 类型，避免依赖 @prisma/client 中不存在的导出
+export type BookingStatus = 'PENDING' | 'PAID' | 'CANCELLED' | 'COMPLETED';
 
 const ALLOWED_STATUSES: BookingStatus[] = [
   'PENDING',
