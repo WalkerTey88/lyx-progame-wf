@@ -2,7 +2,7 @@
 import { PrismaClient, UserRole, BookingStatus } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 
-// 使用和应用相同的 adapter
+// 使用和应用相同的 adapter（PostgreSQL）
 const adapter = new PrismaPg({
   connectionString: process.env.DATABASE_URL,
 });
@@ -12,14 +12,14 @@ const prisma = new PrismaClient({ adapter });
 async function main() {
   console.log('Seeding started...');
 
-  // 1) 管理员账号sma.user.upsert({
-    where: { 
-  const admin = await priemail: 'admin@walterfarm.local' },
+  // 1) 管理员账号
+  const admin = await prisma.user.upsert({
+    where: { email: 'admin@walterfarm.local' },
     update: {},
     create: {
       email: 'admin@walterfarm.local',
       name: 'Walter Farm Admin',
-      password: 'admin123456789', // 之后你可以换成加密密码
+      password: 'admin123456789', // TODO：后续可替换为加密后的密码
       role: UserRole.ADMIN,
     },
   });
