@@ -12,9 +12,9 @@ const prisma = new PrismaClient({ adapter });
 async function main() {
   console.log('Seeding started...');
 
-  // 1) 管理员账号
-  const admin = await prisma.user.upsert({
-    where: { email: 'admin@walterfarm.local' },
+  // 1) 管理员账号sma.user.upsert({
+    where: { 
+  const admin = await priemail: 'admin@walterfarm.local' },
     update: {},
     create: {
       email: 'admin@walterfarm.local',
