@@ -4,6 +4,8 @@
 /node_modules
 /.pnp
 .pnp.*
+
+# yarn
 .yarn/*
 !.yarn/patches
 !.yarn/plugins
@@ -30,8 +32,10 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
+# env files
+.env
+.env.*
+!.env.example
 
 # vercel
 .vercel
@@ -40,5 +44,15 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# prisma (如果你以后用本地 sqlite，可以在这里加 dev.db)
+/prisma/dev.db
+/prisma/dev.db-journal
+
+# prisma generated client（如果你开启了自定义输出目录）
 /app/generated/prisma
+
+# temp archives / others
 project.zip
+*.tmp
+*.temp
+*.bak
