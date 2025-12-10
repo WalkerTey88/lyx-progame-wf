@@ -85,23 +85,23 @@ enum BookingStatus {
   COMPLETED
 }
 model Booking {
-  id           String        @id @default(uuid())
-  userId       String?
-  roomId       String
-  roomTypeId   String
-  user         User?         @relation(fields: [userId], references: [id])
-  room         Room          @relation(fields: [roomId], references: [id])
-  roomType     RoomType      @relation(fields: [roomTypeId], references: [id])
-  guestName    String
-  guestEmail   String
-  guestPhone   String
-  checkIn      DateTime
-  checkOut     DateTime
-  totalPrice   Int
-  status       BookingStatus @default(PENDING)
+  id             String        @id @default(uuid())
+  userId         String?
+  roomId         String
+  roomTypeId     String
+  user           User?         @relation(fields: [userId], references: [id])
+  room           Room          @relation(fields: [roomId], references: [id])
+  roomType       RoomType      @relation(fields: [roomTypeId], references: [id])
+  guestName      String
+  guestEmail     String
+  guestPhone     String
+  checkIn        DateTime
+  checkOut       DateTime
+  totalPrice     Int
+  status         BookingStatus @default(PENDING)
   specialRequest String?
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
   @@index([roomTypeId])
   @@index([roomId])
   @@index([checkIn])

@@ -1,98 +1,99 @@
+// app/api/availability/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { BookingStatus } from "@prisma/client";
 
-const ACTIVE_BOOKING_STATUS = ["PENDING", "PAID"] as const;
+const ACTIVE_BOOKING_STATUSES: BookingStatus[] = [
+  "PENDING",
+  "PAID",
+  "COMPLETED",
+];
 
-// 这个 API 需要根据请求参数动态计算，明确标记为动态，避免被静态预渲染
-export const dynamic = "force-dynamic";
+function parseDate(value: unknown): Date | null {
+  if (typeof value !== "string") return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
 
-export async function GET(req: NextRequest) {
+function buildDateRange(start: Date, end: Date): Date[] {
+  const result: Date[] = [];
+  const cursor = new Date(start);
+  while (cursor < end) {
+    result.push(new Date(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return result;
+}
+
+function toKey(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+export async function POST(req: NextRequest) {
   try {
-    const { searchParams } = new URL(req.url);
-    const roomId = searchParams.get("roomId");
-    const checkInStr = searchParams.get("checkIn");
-    const checkOutStr = searchParams.get("checkOut");
+    const body = await req.json();
 
-    if (!roomId || !checkInStr || !checkOutStr) {
+    const roomTypeId = body?.roomTypeId as string | undefined;
+    const from = parseDate(body?.from);
+    const to = parseDate(body?.to);
+
+    if (!roomTypeId || !from || !to) {
       return NextResponse.json(
-        { error: "Missing roomId, checkIn or checkOut" },
-        { status: 400 }
+        { error: "roomTypeId, from, to are required" },
+        { status: 400 },
       );
     }
 
-    const checkIn = new Date(checkInStr);
-    const checkOut = new Date(checkOutStr);
-
-    if (Number.isNaN(checkIn.getTime()) || Number.isNaN(checkOut.getTime())) {
+    if (to <= from) {
       return NextResponse.json(
-        { error: "Invalid checkIn or checkOut date" },
-        { status: 400 }
+        { error: "`to` must be later than `from`" },
+        { status: 400 },
       );
     }
 
-    // Room.id 是 String，直接用字符串
-    const room = await prisma.room.findUnique({
-      where: { id: roomId },
-    });
-
-    if (!room) {
-      return NextResponse.json({ error: "Room not found" }, { status: 404 });
-    }
-
-    // 查找有时间重叠的有效订单
-    const overlappingBookings = await prisma.booking.findMany({
+    const bookings = await prisma.booking.findMany({
       where: {
-        roomId,
-        status: {
-          // 这里直接用字符串数组，类型层用 any 处理枚举
-          in: ACTIVE_BOOKING_STATUS as any,
+        roomTypeId,
+        status: { in: ACTIVE_BOOKING_STATUSES },
+        NOT: {
+          OR: [
+            { checkOut: { lte: from } },
+            { checkIn: { gte: to } },
+          ],
         },
-        AND: [
-          {
-            checkIn: {
-              lt: checkOut, // existing.checkIn < requested.checkOut
-            },
-          },
-          {
-            checkOut: {
-              gt: checkIn, // existing.checkOut > requested.checkIn
-            },
-          },
-        ],
+      },
+      select: {
+        checkIn: true,
+        checkOut: true,
       },
     });
 
-    // 查找封锁日期（房间级 + 房型级）
-    const overlappingBlocks = await prisma.roomBlockDate.findMany({
-      where: {
-        OR: [
-          { roomId }, // 针对单个房间封锁
-          { roomTypeId: room.roomTypeId }, // 整个房型封锁
-        ],
-        AND: [
-          {
-            startDate: {
-              lt: checkOut,
-            },
-          },
-          {
-            endDate: {
-              gt: checkIn,
-            },
-          },
-        ],
-      },
-    });
+    const blockedSet = new Set<string>();
 
-    const available =
-      overlappingBookings.length === 0 && overlappingBlocks.length === 0;
+    for (const b of bookings) {
+      const start = new Date(b.checkIn);
+      start.setHours(0, 0, 0, 0);
 
-    return NextResponse.json({ available });
+      const end = new Date(b.checkOut);
+      end.setHours(0, 0, 0, 0);
+
+      const range = buildDateRange(start, end);
+      for (const d of range) {
+        if (d >= from && d < to) {
+          blockedSet.add(toKey(d));
+        }
+      }
+    }
+
+    const blockedDates = Array.from(blockedSet).sort();
+    return NextResponse.json({ blockedDates });
   } catch (error) {
     console.error("[availability] error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

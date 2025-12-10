@@ -4,7 +4,7 @@ export interface RoomType {
   id: string;
   name: string;
   description?: string | null;
-  basePrice: number; // 单位：分（sen）
+  basePrice: number;
   capacity: number;
   images?: string[] | null;
   createdAt: string;
