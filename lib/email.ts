@@ -1,63 +1,66 @@
+// lib/email.ts
+
 import { Resend } from "resend";
 
 const resendApiKey = process.env.RESEND_API_KEY;
-const fromEmail = process.env.RESEND_FROM_EMAIL || "booking@walter-farm.com";
+const fromEmail =
+  process.env.RESEND_FROM_EMAIL || "booking@walter-farm.com";
 
+/**
+ * 封装的邮件发送客户端。
+ * 如果没有配置 RESEND_API_KEY，则不会真正发送邮件，只打印警告。
+ */
 const resend = resendApiKey ? new Resend(resendApiKey) : null;
 
-export async function sendBookingCreatedEmail(params: {
-  to: string;
-  guestName: string;
-  bookingId: number;
-  checkIn: string;
-  checkOut: string;
-  amount: number;
-}) {
-  if (!resend) return;
-  await resend.emails.send({
-    from: `Walter Farm <${fromEmail}>`,
-    to: [params.to],
-    subject: `Booking Received - Walter Farm #${params.bookingId}`,
-    text: `
-Dear ${params.guestName},
-
-Thank you for your booking at Walter Farm.
-
-Booking ID: ${params.bookingId}
-Check-in: ${params.checkIn}
-Check-out: ${params.checkOut}
-Amount: RM ${params.amount}
-
-We will confirm your booking after successful payment.
-
-Regards,
-Walter Farm
-`.trim(),
-  });
+if (!resendApiKey) {
+  // 开发 / 测试环境可以接受，只是不会发邮件
+  console.warn(
+    "[email] RESEND_API_KEY is not set. Email sending is DISABLED in this environment."
+  );
 }
 
-export async function sendPaymentSuccessEmail(params: {
+export interface SendBookingEmailParams {
   to: string;
-  guestName: string;
-  bookingId: number;
-  amount: number;
-}) {
-  if (!resend) return;
-  await resend.emails.send({
-    from: `Walter Farm <${fromEmail}>`,
-    to: [params.to],
-    subject: `Payment Successful - Walter Farm #${params.bookingId}`,
-    text: `
-Dear ${params.guestName},
+  subject: string;
+  html: string;
+}
 
-Your payment for booking #${params.bookingId} has been received.
+/**
+ * 发送预订相关邮件（如预订确认邮件）。
+ *
+ * 返回统一结构：
+ *  - { success: true, result: ... }   发送成功
+ *  - { success: false, disabled: true }  邮件功能被禁用（无 API KEY）
+ *  - { success: false, error }       调用 Resend 失败
+ */
+export async function sendBookingEmail(
+  params: SendBookingEmailParams
+): Promise<
+  | { success: true; result: unknown }
+  | { success: false; disabled: true }
+  | { success: false; error: unknown }
+> {
+  const { to, subject, html } = params;
 
-Amount: RM ${params.amount}
+  // 没配置 Key：直接返回，不抛异常，避免阻断主业务流程
+  if (!resend) {
+    console.warn(
+      "[email] Attempted to send email but RESEND_API_KEY is not configured."
+    );
+    return { success: false, disabled: true };
+  }
 
-We look forward to welcoming you at Walter Farm.
+  try {
+    const result = await resend.emails.send({
+      from: fromEmail,
+      to,
+      subject,
+      html,
+    });
 
-Regards,
-Walter Farm
-`.trim(),
-  });
+    return { success: true, result };
+  } catch (error) {
+    console.error("[email] Failed to send email via Resend:", error);
+    return { success: false, error };
+  }
 }
