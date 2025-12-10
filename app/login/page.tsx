@@ -1,10 +1,10 @@
-// app/login/page.tsx
 "use client";
 
-import { useState } from "react";
+import { useState, FormEvent } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import { Suspense } from "react";
 
-export default function LoginPage() {
+function LoginForm() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const from = searchParams.get("from") || "/admin";
@@ -14,7 +14,7 @@ export default function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     setSubmitting(true);
@@ -22,7 +22,9 @@ export default function LoginPage() {
     try {
       const res = await fetch("/api/auth/login", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({ email, password }),
       });
 
@@ -33,7 +35,6 @@ export default function LoginPage() {
         return;
       }
 
-      // 登录成功，跳去来源或 /admin
       router.push(from);
     } catch {
       setError("Network error. Please try again.");
@@ -42,46 +43,54 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-gray-100 px-4">
-      <div className="w-full max-w-md rounded-xl bg-white p-8 shadow-md">
-        <h1 className="mb-2 text-center text-2xl font-bold">
+    <main className="min-h-screen bg-emerald-50 flex items-center justify-center px-4">
+      <div className="w-full max-w-md rounded-xl bg-white p-8 shadow-lg">
+        <h1 className="text-xl font-semibold text-gray-900">
           Walters Farm Admin Login
         </h1>
-        <p className="mb-6 text-center text-sm text-gray-600">
+        <p className="mt-1 text-xs text-gray-500">
           Internal use only. For farm staff and management.
         </p>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="mt-6 space-y-4">
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
+            <label
+              htmlFor="email"
+              className="block text-xs font-medium text-gray-700"
+            >
               Email
             </label>
             <input
+              id="email"
               type="email"
-              className="w-full rounded border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
               autoComplete="username"
               required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
             />
           </div>
 
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
+            <label
+              htmlFor="password"
+              className="block text-xs font-medium text-gray-700"
+            >
               Password
             </label>
             <input
+              id="password"
               type="password"
-              className="w-full rounded border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
               autoComplete="current-password"
               required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
             />
           </div>
 
           {error && (
-            <p className="text-sm text-red-600" role="alert">
+            <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-md px-2 py-2">
               {error}
             </p>
           )}
@@ -89,12 +98,26 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={submitting}
-            className="flex w-full justify-center rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+            className="mt-2 inline-flex w-full items-center justify-center rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-70"
           >
             {submitting ? "Signing in..." : "Sign in"}
           </button>
         </form>
       </div>
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="min-h-screen flex items-center justify-center">
+          Loading...
+        </main>
+      }
+    >
+      <LoginForm />
+    </Suspense>
   );
 }
