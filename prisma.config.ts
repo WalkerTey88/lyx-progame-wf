@@ -1,18 +1,18 @@
 // prisma.config.ts
-import { defineConfig } from 'prisma/config';
-
+import "dotenv/config";
+import { defineConfig, env } from "prisma/config";
+type Env = {
+  DATABASE_URL: string;
+};
 export default defineConfig({
-  // 指向你的 Prisma schema
-  schema: 'prisma/schema.prisma',
-
-  // 迁移 & seed 配置
+  // Prisma schema 文件路径
+  schema: "prisma/schema.prisma",
+  // 迁移文件目录（保持默认即可）
   migrations: {
-    path: 'prisma/migrations',
-    seed: 'node prisma/seed.mjs', // prisma db seed 会执行这个
+    path: "prisma/migrations",
   },
-
-  // Prisma 7: 连接字符串改在 config 里配置
+  // 数据库连接字符串，从环境变量 DATABASE_URL 读取
   datasource: {
-    url: process.env.DATABASE_URL!,
+    url: env<Env>("DATABASE_URL"),
   },
 });

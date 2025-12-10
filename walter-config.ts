@@ -1,5 +1,4 @@
 // walter-config.ts
-
 export const walterConfig = {
   name: "Walters Farm Segamat",
   shortName: "Walter Farm",
