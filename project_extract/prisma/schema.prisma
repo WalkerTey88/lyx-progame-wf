@@ -1,0 +1,118 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+///////////////////////////////////////////////////////////////
+// User & Auth
+///////////////////////////////////////////////////////////////
+
+model User {
+  id         String      @id @default(uuid())
+  email      String      @unique
+  name       String?
+  password   String
+  role       UserRole    @default(USER)
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  bookings   Booking[]
+}
+
+enum UserRole {
+  USER
+  ADMIN
+  SUPERADMIN
+}
+
+///////////////////////////////////////////////////////////////
+// Room Types (房型主数据)
+///////////////////////////////////////////////////////////////
+
+model RoomType {
+  id          String        @id @default(uuid())
+  name        String
+  description String?
+  basePrice   Int           // 默认基础价格
+  capacity    Int
+  images      String[]
+
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  rooms       Room[]
+  calendars   PriceCalendar[]
+  blocks      RoomBlockDate[]
+}
+
+///////////////////////////////////////////////////////////////
+// Rooms (实际房间：101、102…)
+///////////////////////////////////////////////////////////////
+
+model Room {
+  id          String      @id @default(uuid())
+  roomTypeId  String
+  roomNumber  String      @unique // "101", "102" 等
+  isActive    Boolean     @default(true)
+
+  roomType    RoomType    @relation(fields: [roomTypeId], references: [id])
+  bookings    Booking[]
+}
+
+///////////////////////////////////////////////////////////////
+// Booking Engine — price calendar
+// 动态价格日历（每一天可自定义价格）
+///////////////////////////////////////////////////////////////
+
+model PriceCalendar {
+  id          String      @id @default(uuid())
+  roomTypeId  String
+  date        DateTime
+  price       Int
+
+  roomType    RoomType    @relation(fields: [roomTypeId], references: [id])
+
+  @@unique([roomTypeId, date])
+}
+
+///////////////////////////////////////////////////////////////
+// Booking Engine — room block dates
+// 房间封锁（维修/不可售）
+///////////////////////////////////////////////////////////////
+
+model RoomBlockDate {
+  id          String      @id @default(uuid())
+  roomTypeId  String
+  startDate   DateTime
+  endDate     DateTime
+  reason      String?
+
+  roomType    RoomType    @relation(fields: [roomTypeId], references: [id])
+}
+
+///////////////////////////////////////////////////////////////
+// Booking Orders
+///////////////////////////////////////////////////////////////
+
+model Booking {
+  id          String        @id @default(uuid())
+  userId      String
+  roomId      String
+  checkIn     DateTime
+  checkOut    DateTime
+  totalPrice  Int
+  status      BookingStatus @default(PENDING)
+
+  user        User          @relation(fields: [userId], references: [id])
+  room        Room          @relation(fields: [roomId], references: [id])
+}
+
+enum BookingStatus {
+  PENDING
+  PAID
+  CANCELLED
+  COMPLETED
+}
