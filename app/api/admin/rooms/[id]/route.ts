@@ -1,54 +1,24 @@
-// app/api/admin/rooms/[id]/route.ts
-import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+// app/api/rooms/[id]/route.ts
 
-export async function PATCH(
-  req: NextRequest,
-  context: { params: { id: string } },
-) {
-  const id = context.params.id;
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 
-  try {
-    const body = await req.json().catch(() => null);
-    if (!body || typeof body !== 'object') {
-      return NextResponse.json(
-        { error: 'Invalid JSON body.' },
-        { status: 400 },
-      );
-    }
+type RouteContext = {
+  params: {
+    id: string;
+  };
+};
 
-    const { roomNumber, isActive, roomTypeId } = body as {
-      roomNumber?: string;
-      isActive?: boolean;
-      roomTypeId?: string;
-    };
+export async function GET(_req: Request, { params }: RouteContext) {
+  const { id } = params; // 这里保持 string，不要再 Number()
 
-    const data: any = {};
-    if (typeof roomNumber === 'string') data.roomNumber = roomNumber;
-    if (typeof isActive === 'boolean') data.isActive = isActive;
-    if (typeof roomTypeId === 'string') data.roomTypeId = roomTypeId;
+  const room = await prisma.room.findUnique({
+    where: { id },
+  });
 
-    if (Object.keys(data).length === 0) {
-      return NextResponse.json(
-        { error: 'No valid fields to update.' },
-        { status: 400 },
-      );
-    }
-
-    const room = await prisma.room.update({
-      where: { id },
-      data,
-      include: {
-        roomType: true,
-      },
-    });
-
-    return NextResponse.json({ room });
-  } catch (error) {
-    console.error(`PATCH /api/admin/rooms/${id} error`, error);
-    return NextResponse.json(
-      { error: 'Failed to update room.' },
-      { status: 500 },
-    );
+  if (!room) {
+    return new NextResponse("Not found", { status: 404 });
   }
+
+  return NextResponse.json({ data: room });
 }

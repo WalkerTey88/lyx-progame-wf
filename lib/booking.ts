@@ -1,4 +1,5 @@
 // lib/booking.ts
+
 import { prisma } from "./prisma";
 
 export type RoomTypeForBooking = {
@@ -15,7 +16,9 @@ export async function getRoomTypesForBooking(): Promise<RoomTypeForBooking[]> {
   const roomTypes = await prisma.roomType.findMany({
     include: {
       _count: {
-        select: { rooms: true },
+        select: {
+          rooms: true,
+        },
       },
     },
     orderBy: {
@@ -52,6 +55,7 @@ export function parseDateOnly(dateStr: string): Date | null {
   if (day < 1 || day > 31) return null;
 
   const d = new Date(year, month - 1, day);
+
   // 反向校验，防止 2025-13-40 之类被 JS 自动修正
   if (
     d.getFullYear() !== year ||
@@ -73,10 +77,7 @@ export function calculateNights(checkIn: Date, checkOut: Date): number {
 }
 
 export type AvailableRoomResult = {
-  availableRoom: {
-    id: string;
-    roomNumber: string;
-  } | null;
+  availableRoom: { id: string; roomNumber: string } | null;
   totalRooms: number;
   bookedCount: number;
 };

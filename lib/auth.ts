@@ -1,4 +1,5 @@
 // lib/auth.ts
+
 import { cookies } from "next/headers";
 import { jwtVerify, JWTPayload } from "jose";
 import { prisma } from "./prisma";
@@ -17,7 +18,8 @@ export type AuthUser = {
   id: string;
   email: string;
   name: string | null;
-  role: "USER" | "ADMIN" | "SUPERADMIN";
+  // 目前 Prisma 里只有 ADMIN / GUEST，但这里预留 SUPERADMIN
+  role: "GUEST" | "ADMIN" | "SUPERADMIN";
 };
 
 export async function getCurrentUser(): Promise<AuthUser | null> {
@@ -30,7 +32,9 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
     const userId = (payload as JWTPayload & { userId?: string }).userId;
     if (!userId) return null;
 
-    const user = await prisma.user.findUnique({ where: { id: userId } });
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+    });
     if (!user) return null;
 
     return {
