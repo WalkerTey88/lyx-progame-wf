@@ -1,61 +1,72 @@
 // app/api/booking/route.ts
+
 import { NextRequest, NextResponse } from "next/server";
-import { BookingStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
-function jsonError(message: string, status = 400) {
-  return NextResponse.json({ error: message }, { status });
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+// 工具：安全解析日期
+function parseDate(value: unknown): Date | null {
+  if (typeof value !== "string") return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return d;
 }
 
-// GET /api/booking?id=xxx
-// 用于前台“查看预订详情”（如确认页）
+// 工具：计算晚数（checkOut 当天不住）
+function calculateNights(checkIn: Date, checkOut: Date): number {
+  const msPerDay = 1000 * 60 * 60 * 24;
+  const diff = checkOut.getTime() - checkIn.getTime();
+  if (diff <= 0) return 0;
+  return Math.round(diff / msPerDay);
+}
+
+// GET /api/booking?id=xxx  → 查单一订单（含 room / roomType / user）
 export async function GET(req: NextRequest) {
-  try {
-    const { searchParams } = new URL(req.url);
-    const id = searchParams.get("id");
+  const { searchParams } = new URL(req.url);
+  const id = searchParams.get("id");
 
-    if (!id) {
-      return jsonError("Missing booking id", 400);
-    }
-
-    const booking = await prisma.booking.findUnique({
-      where: { id },
-      include: {
-        room: true,
-        roomType: true,
-        user: true,
-      },
-    });
-
-    if (!booking) {
-      return jsonError("Booking not found", 404);
-    }
-
-    return NextResponse.json({ data: booking });
-  } catch (error) {
-    console.error("GET /api/booking error:", error);
-    return jsonError("Internal server error", 500);
+  if (!id) {
+    return NextResponse.json(
+      { error: "Missing booking id" },
+      { status: 400 },
+    );
   }
+
+  const booking = await prisma.booking.findUnique({
+    where: { id },
+    include: {
+      room: true,
+      roomType: true,
+      user: true,
+    },
+  });
+
+  if (!booking) {
+    return NextResponse.json(
+      { error: "Booking not found" },
+      { status: 404 },
+    );
+  }
+
+  return NextResponse.json({ data: booking });
 }
 
-// POST /api/booking
-// 创建预订 + 检查库存 + 分配具体房间
-//
-// Request body 示例：
-// {
-//   "roomTypeId": "xxx",
-//   "checkIn": "2025-12-20",
-//   "checkOut": "2025-12-22",
-//   "guestName": "Demo Guest",
-//   "guestEmail": "guest@example.com",
-//   "guestPhone": "0123456789",
-//   "specialRequest": "Late check-in"
+// POST /api/booking  → 创建预订
+// 预期 body：{
+//   roomTypeId, checkIn, checkOut,
+//   guestName, guestEmail, guestPhone?, specialRequest?
 // }
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => null);
-    if (!body) {
-      return jsonError("Invalid JSON body", 400);
+
+    if (!body || typeof body !== "object") {
+      return NextResponse.json(
+        { error: "Invalid JSON body" },
+        { status: 400 },
+      );
     }
 
     const {
@@ -76,104 +87,131 @@ export async function POST(req: NextRequest) {
       specialRequest?: string;
     };
 
+    // 基础字段校验
     if (!roomTypeId || !checkIn || !checkOut || !guestName || !guestEmail) {
-      return jsonError(
-        "Missing required fields: roomTypeId, checkIn, checkOut, guestName, guestEmail",
-        400,
+      return NextResponse.json(
+        { error: "Missing required fields" },
+        { status: 400 },
       );
     }
 
-    const checkInDate = new Date(checkIn);
-    const checkOutDate = new Date(checkOut);
+    const checkInDate = parseDate(checkIn);
+    const checkOutDate = parseDate(checkOut);
 
-    if (Number.isNaN(checkInDate.getTime()) || Number.isNaN(checkOutDate.getTime())) {
-      return jsonError("Invalid checkIn/checkOut date format", 400);
+    if (!checkInDate || !checkOutDate) {
+      return NextResponse.json(
+        { error: "Invalid checkIn or checkOut date" },
+        { status: 400 },
+      );
     }
 
     if (checkOutDate <= checkInDate) {
-      return jsonError("checkOut must be after checkIn", 400);
+      return NextResponse.json(
+        { error: "checkOut must be after checkIn" },
+        { status: 400 },
+      );
     }
 
-    const msPerDay = 1000 * 60 * 60 * 24;
-    const nights = Math.round(
-      (checkOutDate.getTime() - checkInDate.getTime()) / msPerDay,
-    );
+    // 1. 取房型
+    const roomType = await prisma.roomType.findUnique({
+      where: { id: roomTypeId },
+    });
 
-    if (nights <= 0) {
-      return jsonError("Stay length must be at least 1 night", 400);
+    if (!roomType) {
+      return NextResponse.json(
+        { error: "Invalid roomTypeId" },
+        { status: 400 },
+      );
     }
 
-    // 事务：锁定房型 -> 找到可用房 -> 创建订单
-    const booking = await prisma.$transaction(async (tx) => {
-      const roomType = await tx.roomType.findUnique({
-        where: { id: roomTypeId },
-      });
+    // 2. 找一个可用房间（只选 isActive = true）
+    const rooms = await prisma.room.findMany({
+      where: {
+        roomTypeId,
+        isActive: true,
+      },
+      orderBy: {
+        roomNumber: "asc",
+      },
+    });
 
-      if (!roomType) {
-        throw new Error("ROOM_TYPE_NOT_FOUND");
-      }
+    if (!rooms.length) {
+      return NextResponse.json(
+        { error: "No active rooms for this room type" },
+        { status: 409 },
+      );
+    }
 
-      // 找一个可用房间：
-      // 条件：该房间在给定日期区间内没有 PENDING / PAID / COMPLETED 订单
-      const availableRoom = await tx.room.findFirst({
+    const statusesToBlock = ["PENDING", "PAID", "COMPLETED"] as const;
+
+    let selectedRoom: (typeof rooms)[number] | null = null;
+
+    for (const room of rooms) {
+      const overlapping = await prisma.booking.count({
         where: {
-          roomTypeId: roomType.id,
-          isActive: true,
-          bookings: {
-            none: {
-              status: {
-                in: [
-                  BookingStatus.PENDING,
-                  BookingStatus.PAID,
-                  BookingStatus.COMPLETED,
-                ],
-              },
-              AND: [
-                {
-                  checkIn: {
-                    lt: checkOutDate,
-                  },
-                },
-                {
-                  checkOut: {
-                    gt: checkInDate,
-                  },
-                },
-              ],
-            },
-          },
-        },
-        orderBy: {
-          roomNumber: "asc",
+          roomId: room.id,
+          status: { in: statusesToBlock as any },
+          AND: [
+            { checkIn: { lt: checkOutDate } },
+            { checkOut: { gt: checkInDate } },
+          ],
         },
       });
 
-      if (!availableRoom) {
-        throw new Error("NO_AVAILABILITY");
+      if (overlapping === 0) {
+        selectedRoom = room;
+        break;
       }
+    }
 
-      const totalPrice = roomType.basePrice * nights;
+    if (!selectedRoom) {
+      return NextResponse.json(
+        { error: "No rooms available for the selected dates" },
+        { status: 409 },
+      );
+    }
 
-      const created = await tx.booking.create({
+    // 3. 计算价格（按房型 basePrice × 晚数）
+    const nights = calculateNights(checkInDate, checkOutDate);
+    const totalPrice =
+      nights > 0 ? roomType.basePrice * nights : roomType.basePrice;
+
+    // 4. 用 guestEmail 找或建一个 User（仅做联系人，不开放前台登录）
+    let user = await prisma.user.findUnique({
+      where: { email: guestEmail },
+    });
+
+    if (!user) {
+      user = await prisma.user.create({
         data: {
-          roomTypeId: roomType.id,
-          roomId: availableRoom.id,
-          guestName,
-          guestEmail,
-          guestPhone: guestPhone ?? "",
-          specialRequest: specialRequest ?? null,
-          checkIn: checkInDate,
-          checkOut: checkOutDate,
-          totalPrice,
-          status: BookingStatus.PENDING, // 支付集成后再更新为 PAID
-        },
-        include: {
-          room: true,
-          roomType: true,
+          email: guestEmail,
+          name: guestName,
+          // 不做前台登录账户，password 为空
+          role: "GUEST",
         },
       });
+    }
 
-      return created;
+    // 5. 创建 Booking（默认 status = PENDING）
+    const booking = await prisma.booking.create({
+      data: {
+        userId: user.id,
+        roomId: selectedRoom.id,
+        roomTypeId,
+        guestName,
+        guestEmail,
+        guestPhone: guestPhone ?? "",
+        checkIn: checkInDate,
+        checkOut: checkOutDate,
+        totalPrice,
+        status: "PENDING",
+        specialRequest: specialRequest || null,
+      },
+      include: {
+        room: true,
+        roomType: true,
+        user: true,
+      },
     });
 
     return NextResponse.json(
@@ -183,18 +221,11 @@ export async function POST(req: NextRequest) {
       },
       { status: 201 },
     );
-  } catch (error: any) {
-    console.error("POST /api/booking error:", error);
-
-    if (error instanceof Error) {
-      if (error.message === "ROOM_TYPE_NOT_FOUND") {
-        return jsonError("Room type not found", 404);
-      }
-      if (error.message === "NO_AVAILABILITY") {
-        return jsonError("No available rooms for selected dates", 409);
-      }
-    }
-
-    return jsonError("Internal server error", 500);
+  } catch (error) {
+    console.error("[POST /api/booking] error:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
   }
-}
+} sts
