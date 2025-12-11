@@ -3,8 +3,8 @@ import { BookingStatus } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 
-// Server Action: 更新状态
-export async function updateBookingStatus(formData: FormData) {
+// Server Action: 更新状态（不导出，只在本文件内部使用）
+async function updateBookingStatus(formData: FormData) {
   "use server";
 
   const id = formData.get("id") as string | null;
@@ -14,7 +14,6 @@ export async function updateBookingStatus(formData: FormData) {
     return;
   }
 
-  // 简单校验一下 status
   const upper = status.toUpperCase() as BookingStatus;
   const allowed: BookingStatus[] = [
     BookingStatus.PENDING,
@@ -35,8 +34,8 @@ export async function updateBookingStatus(formData: FormData) {
   revalidatePath("/admin/bookings");
 }
 
-// Server Action: 软取消（改成 CANCELLED）
-export async function cancelBooking(formData: FormData) {
+// Server Action: 软取消（改成 CANCELLED，同样不导出）
+async function cancelBooking(formData: FormData) {
   "use server";
 
   const id = formData.get("id") as string | null;
