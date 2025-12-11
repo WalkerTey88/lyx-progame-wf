@@ -1,250 +1,194 @@
 // app/admin/bookings/page.tsx
-"use client";
+import { BookingStatus } from "@prisma/client";
+import { revalidatePath } from "next/cache";
+import { prisma } from "@/lib/prisma";
 
-import { useEffect, useState } from "react";
+// Server Action: 更新状态
+export async function updateBookingStatus(formData: FormData) {
+  "use server";
 
-type BookingStatus = "PENDING" | "PAID" | "CANCELLED" | "COMPLETED";
+  const id = formData.get("id") as string | null;
+  const status = formData.get("status") as string | null;
 
-type AdminBooking = {
-  id: string;
-  status: BookingStatus;
-  checkIn: string;
-  checkOut: string;
-  totalPrice: number;
-  user: {
-    id: string;
-    name: string | null;
-    email: string;
-  } | null;
-  room: {
-    id: string;
-    roomNumber: string;
-    roomType: {
-      id: string;
-      name: string;
-    } | null;
-  } | null;
-};
-
-type FilterStatus = "ALL" | BookingStatus;
-
-export default function AdminBookingsPage() {
-  const [bookings, setBookings] = useState<AdminBooking[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [filterStatus, setFilterStatus] = useState<FilterStatus>("ALL");
-  const [error, setError] = useState<string | null>(null);
-  const [updatingId, setUpdatingId] = useState<string | null>(null);
-
-  async function loadBookings(status: FilterStatus = filterStatus) {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const qs =
-        status === "ALL" ? "" : `?status=${encodeURIComponent(status)}`;
-      const res = await fetch(`/api/admin/bookings${qs}`, {
-        cache: "no-store",
-      });
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "Failed to load bookings.");
-      }
-
-      const data = (await res.json()) as { bookings: AdminBooking[] };
-      setBookings(data.bookings ?? []);
-    } catch (err: any) {
-      setError(err.message || "Unexpected error.");
-    } finally {
-      setLoading(false);
-    }
+  if (!id || !status) {
+    return;
   }
 
-  useEffect(() => {
-    loadBookings();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // 简单校验一下 status
+  const upper = status.toUpperCase() as BookingStatus;
+  const allowed: BookingStatus[] = [
+    BookingStatus.PENDING,
+    BookingStatus.PAID,
+    BookingStatus.CANCELLED,
+    BookingStatus.COMPLETED,
+  ];
 
-  async function updateStatus(id: string, status: BookingStatus) {
-    setUpdatingId(id);
-    setError(null);
-
-    try {
-      const res = await fetch(`/api/admin/bookings/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
-      });
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "Failed to update booking.");
-      }
-
-      // 本地更新列表
-      const data = (await res.json()) as { booking: AdminBooking };
-      setBookings((prev) =>
-        prev.map((b) => (b.id === id ? { ...b, ...data.booking } : b))
-      );
-    } catch (err: any) {
-      setError(err.message || "Unexpected error.");
-    } finally {
-      setUpdatingId(null);
-    }
+  if (!allowed.includes(upper)) {
+    return;
   }
 
-  function formatDate(value: string) {
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return value;
-    return d.toISOString().slice(0, 10);
-  }
+  await prisma.booking.update({
+    where: { id },
+    data: { status: upper },
+  });
 
-  function calcNights(checkIn: string, checkOut: string) {
-    const a = new Date(checkIn);
-    const b = new Date(checkOut);
-    if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return "-";
-    const diff = (b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24);
-    return diff.toString();
-  }
+  revalidatePath("/admin/bookings");
+}
 
-  const filtered =
-    filterStatus === "ALL"
-      ? bookings
-      : bookings.filter((b) => b.status === filterStatus);
+// Server Action: 软取消（改成 CANCELLED）
+export async function cancelBooking(formData: FormData) {
+  "use server";
+
+  const id = formData.get("id") as string | null;
+  if (!id) return;
+
+  await prisma.booking.update({
+    where: { id },
+    data: { status: BookingStatus.CANCELLED },
+  });
+
+  revalidatePath("/admin/bookings");
+}
+
+export default async function AdminBookingsPage() {
+  // 直接查数据库，不再通过 /api
+  const bookings = await prisma.booking.findMany({
+    orderBy: { createdAt: "desc" },
+    include: {
+      room: true,
+      roomType: true,
+      user: true,
+    },
+  });
+
+  const statusOptions: BookingStatus[] = [
+    BookingStatus.PENDING,
+    BookingStatus.PAID,
+    BookingStatus.CANCELLED,
+    BookingStatus.COMPLETED,
+  ];
 
   return (
-    <main className="mx-auto max-w-6xl px-4 py-8">
-      <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Bookings (Admin)</h1>
-          <p className="text-sm text-gray-600">
-            Internal booking overview for Walters Farm Segamat.
-          </p>
-        </div>
+    <main className="mx-auto max-w-5xl px-4 py-8">
+      <h1 className="mb-2 text-2xl font-semibold tracking-tight text-gray-900">
+        Admin · Bookings
+      </h1>
+      <p className="mb-4 text-sm text-gray-600">
+        This page reads bookings directly from the database using Prisma and
+        uses server actions to update or cancel bookings.
+      </p>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <label className="text-sm font-semibold text-gray-700">
-            Status:
-          </label>
-          <select
-            value={filterStatus}
-            onChange={(e) => {
-              const next = e.target.value as FilterStatus;
-              setFilterStatus(next);
-              loadBookings(next);
-            }}
-            className="rounded border px-2 py-1 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-          >
-            <option value="ALL">All</option>
-            <option value="PENDING">Pending</option>
-            <option value="PAID">Paid</option>
-            <option value="CANCELLED">Cancelled</option>
-            <option value="COMPLETED">Completed</option>
-          </select>
-
-          <a
-            href="/api/admin/bookings/export"
-            className="rounded bg-gray-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-800"
-          >
-            Export CSV
-          </a>
-        </div>
+      <div className="mb-4 rounded-md bg-gray-50 px-3 py-2 text-xs text-gray-700">
+        <p>
+          Total bookings:{" "}
+          <span className="font-semibold">{bookings.length}</span>
+        </p>
       </div>
 
-      {error && (
-        <div className="mb-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-          {error}
-        </div>
-      )}
-
-      {loading ? (
-        <p className="text-sm text-gray-600">Loading bookings...</p>
-      ) : filtered.length === 0 ? (
-        <p className="text-sm text-gray-600">No bookings found.</p>
+      {bookings.length === 0 ? (
+        <p className="text-sm text-gray-500">No bookings yet.</p>
       ) : (
-        <div className="overflow-x-auto rounded border bg-white">
-          <table className="min-w-full text-left text-sm">
+        <div className="overflow-x-auto rounded-md border border-gray-200 bg-white shadow-sm">
+          <table className="min-w-full divide-y divide-gray-200 text-sm">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-3 py-2">ID</th>
-                <th className="px-3 py-2">Guest</th>
-                <th className="px-3 py-2">Room</th>
-                <th className="px-3 py-2">Dates</th>
-                <th className="px-3 py-2">Nights</th>
-                <th className="px-3 py-2">Total (RM)</th>
-                <th className="px-3 py-2">Status</th>
-                <th className="px-3 py-2">Actions</th>
+                <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  Guest
+                </th>
+                <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  Room
+                </th>
+                <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  Dates
+                </th>
+                <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  Total
+                </th>
+                <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  Status
+                </th>
+                <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  Actions
+                </th>
               </tr>
             </thead>
-            <tbody>
-              {filtered.map((b) => (
-                <tr key={b.id} className="border-t">
-                  <td className="px-3 py-2 align-top text-xs text-gray-500">
-                    {b.id}
-                  </td>
-                  <td className="px-3 py-2 align-top">
-                    <div className="font-medium">
-                      {b.user?.name || "(no name)"}
+            <tbody className="divide-y divide-gray-100 bg-white">
+              {bookings.map((b) => (
+                <tr key={b.id} className="align-top">
+                  <td className="px-3 py-3">
+                    <div className="text-xs font-medium text-gray-900">
+                      {b.guestName}
                     </div>
-                    <div className="text-xs text-gray-500">
-                      {b.user?.email || "-"}
+                    <div className="text-[11px] text-gray-500">
+                      {b.guestEmail}
+                    </div>
+                    {b.guestPhone && (
+                      <div className="text-[11px] text-gray-500">
+                        {b.guestPhone}
+                      </div>
+                    )}
+                    {b.specialRequest && (
+                      <div className="mt-1 text-[11px] text-gray-500">
+                        Req: {b.specialRequest}
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-3 py-3">
+                    <div className="text-xs text-gray-900">
+                      {b.roomType?.name ?? "-"}
+                    </div>
+                    <div className="text-[11px] text-gray-500">
+                      Room {b.room?.roomNumber ?? "-"}
                     </div>
                   </td>
-                  <td className="px-3 py-2 align-top">
-                    <div>{b.room?.roomNumber || "-"}</div>
-                    <div className="text-xs text-gray-500">
-                      {b.room?.roomType?.name || ""}
+                  <td className="px-3 py-3 text-xs text-gray-700">
+                    <div>
+                      {new Date(b.checkIn).toLocaleDateString()} →{" "}
+                      {new Date(b.checkOut).toLocaleDateString()}
                     </div>
                   </td>
-                  <td className="px-3 py-2 align-top text-xs">
-                    <div>In: {formatDate(b.checkIn)}</div>
-                    <div>Out: {formatDate(b.checkOut)}</div>
+                  <td className="px-3 py-3 text-xs text-gray-700">
+                    RM {(b.totalPrice / 100).toFixed(2)}
                   </td>
-                  <td className="px-3 py-2 align-top text-center text-xs">
-                    {calcNights(b.checkIn, b.checkOut)}
-                  </td>
-                  <td className="px-3 py-2 align-top text-sm">
-                    RM {b.totalPrice.toFixed(2)}
-                  </td>
-                  <td className="px-3 py-2 align-top">
-                    <span
-                      className={
-                        "inline-flex rounded-full px-2 py-0.5 text-xs font-semibold " +
-                        (b.status === "PENDING"
-                          ? "bg-yellow-100 text-yellow-800"
-                          : b.status === "PAID"
-                          ? "bg-green-100 text-green-800"
-                          : b.status === "COMPLETED"
-                          ? "bg-blue-100 text-blue-800"
-                          : "bg-red-100 text-red-800")
-                      }
-                    >
+                  <td className="px-3 py-3 text-xs text-gray-700">
+                    <span className="inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-gray-700">
                       {b.status}
                     </span>
                   </td>
-                  <td className="px-3 py-2 align-top">
-                    <div className="flex flex-wrap gap-1">
-                      <button
-                        className="rounded bg-green-600 px-2 py-1 text-xs text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
-                        disabled={updatingId === b.id}
-                        onClick={() => updateStatus(b.id, "PAID")}
-                      >
-                        Mark PAID
-                      </button>
-                      <button
-                        className="rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-                        disabled={updatingId === b.id}
-                        onClick={() => updateStatus(b.id, "COMPLETED")}
-                      >
-                        Complete
-                      </button>
-                      <button
-                        className="rounded bg-red-600 px-2 py-1 text-xs text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
-                        disabled={updatingId === b.id}
-                        onClick={() => updateStatus(b.id, "CANCELLED")}
-                      >
-                        Cancel
-                      </button>
+                  <td className="px-3 py-3 text-xs text-gray-700">
+                    <div className="flex flex-col gap-2">
+                      {/* 更新状态 */}
+                      <form action={updateBookingStatus} className="flex gap-1">
+                        <input type="hidden" name="id" value={b.id} />
+                        <select
+                          name="status"
+                          defaultValue={b.status}
+                          className="rounded-md border border-gray-300 bg-white px-2 py-1 text-[11px] shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                        >
+                          {statusOptions.map((s) => (
+                            <option key={s} value={s}>
+                              {s}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="submit"
+                          className="rounded-md bg-emerald-600 px-2 py-1 text-[11px] font-medium text-white hover:bg-emerald-700"
+                        >
+                          Update
+                        </button>
+                      </form>
+
+                      {/* 软取消 */}
+                      <form action={cancelBooking}>
+                        <input type="hidden" name="id" value={b.id} />
+                        <button
+                          type="submit"
+                          className="rounded-md bg-red-600 px-2 py-1 text-[11px] font-medium text-white hover:bg-red-700"
+                        >
+                          Cancel
+                        </button>
+                      </form>
                     </div>
                   </td>
                 </tr>

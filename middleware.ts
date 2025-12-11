@@ -6,10 +6,10 @@ const SESSION_COOKIE_NAME = "walter_admin_session";
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  const isAdminPath =
-    pathname.startsWith("/admin") || pathname.startsWith("/api/admin");
+  // 只拦截 /admin 页面，不拦截 /api/admin
+  const isAdminPage = pathname.startsWith("/admin");
 
-  if (!isAdminPath) {
+  if (!isAdminPage) {
     return NextResponse.next();
   }
 
@@ -22,10 +22,11 @@ export function middleware(req: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  // 有 cookie，具体权限在 API 里用 requireAdminUser 再校验
+  // 有 cookie，具体权限在页面或 API 里再做更细的校验
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/api/admin/:path*"],
+  // 只匹配 /admin 下的页面路由
+  matcher: ["/admin/:path*"],
 };

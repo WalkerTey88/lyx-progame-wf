@@ -1,301 +1,294 @@
 // components/BookingForm.tsx
-'use client';
+"use client";
 
-import { useState } from 'react';
+import { useState } from "react";
 
-export type RoomTypeOption = {
+type RoomTypeOption = {
   id: string;
   name: string;
-  description?: string | null;
-  basePrice: number;
+  description: string;
+  basePrice: number; // 分 / sen
   capacity: number;
-  totalRooms: number;
 };
 
-type BookingFormProps = {
+type Props = {
   roomTypes: RoomTypeOption[];
 };
 
-type AvailabilityResult = {
-  availableCount: number;
-  totalRooms: number;
-  isAvailable: boolean;
-} | null;
+// 统一响应类型：成功 / 失败都走这个结构
+type BookingResponse = {
+  data?: {
+    id: string;
+    roomId: string;
+    roomTypeId: string;
+    status: string;
+    totalPrice: number;
+  } | null;
+  message?: string;
+  error?: string;
+};
 
-type BookingResult = {
-  bookingId: string;
-  status: string;
-  roomNumber: string;
-  roomTypeName: string;
-  totalPrice: number;
-  nights: number;
-} | null;
+export function BookingForm({ roomTypes }: Props) {
+  const [roomTypeId, setRoomTypeId] = useState(
+    roomTypes[0]?.id ?? "",
+  );
+  const [checkIn, setCheckIn] = useState("");
+  const [checkOut, setCheckOut] = useState("");
+  const [guestName, setGuestName] = useState("");
+  const [guestEmail, setGuestEmail] = useState("");
+  const [guestPhone, setGuestPhone] = useState("");
+  const [specialRequest, setSpecialRequest] = useState("");
 
-export default function BookingForm({ roomTypes }: BookingFormProps) {
-  const [roomTypeId, setRoomTypeId] = useState(roomTypes[0]?.id ?? '');
-  const [checkIn, setCheckIn] = useState('');
-  const [checkOut, setCheckOut] = useState('');
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-
-  const [availabilityResult, setAvailabilityResult] =
-    useState<AvailabilityResult>(null);
-  const [bookingResult, setBookingResult] = useState<BookingResult>(null);
-
-  const [checking, setChecking] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [createdId, setCreatedId] = useState<string | null>(null);
 
-  async function handleCheckAvailability() {
-    setError(null);
-    setAvailabilityResult(null);
-    setBookingResult(null);
+  const selectedRoomType =
+    roomTypes.find((rt) => rt.id === roomTypeId) ?? null;
 
-    if (!roomTypeId || !checkIn || !checkOut) {
-      setError('Please select a room type and both dates.');
-      return;
-    }
+  const nights = (() => {
+    if (!checkIn || !checkOut) return 0;
+    const inDate = new Date(checkIn);
+    const outDate = new Date(checkOut);
+    const diff = outDate.getTime() - inDate.getTime();
+    if (Number.isNaN(diff) || diff <= 0) return 0;
+    return Math.round(diff / (1000 * 60 * 60 * 24));
+  })();
 
-    try {
-      setChecking(true);
-      const res = await fetch('/api/booking/check-availability', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roomTypeId, checkIn, checkOut }),
-      });
+  const estimatedTotal =
+    selectedRoomType && nights > 0
+      ? (selectedRoomType.basePrice * nights) / 100
+      : null;
 
-      let data: any = null;
-      let text: string | null = null;
-      try {
-        data = await res.json();
-      } catch {
-        text = await res.text().catch(() => null);
-      }
-
-      if (!res.ok) {
-        setError(
-          (data && data.error) ||
-            text ||
-            `Failed to check availability (HTTP ${res.status}).`,
-        );
-        return;
-      }
-
-      setAvailabilityResult({
-        availableCount: data.availableCount,
-        totalRooms: data.totalRooms,
-        isAvailable: data.isAvailable,
-      });
-    } catch (e) {
-      console.error(e);
-      setError('Unexpected error while checking availability (network).');
-    } finally {
-      setChecking(false);
-    }
-  }
-
-  async function handleSubmitBooking(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    setBookingResult(null);
+    setSuccess(null);
+    setCreatedId(null);
 
-    if (!roomTypeId || !checkIn || !checkOut || !name || !email) {
-      setError('Please fill in all required fields.');
+    if (!roomTypeId) {
+      setError("Please select a room type.");
       return;
     }
 
+    if (!checkIn || !checkOut) {
+      setError("Please select check-in and check-out dates.");
+      return;
+    }
+
+    if (!guestName || !guestEmail) {
+      setError("Guest name and email are required.");
+      return;
+    }
+
+    setIsSubmitting(true);
     try {
-      setSubmitting(true);
-      const res = await fetch('/api/booking/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roomTypeId, checkIn, checkOut, name, email }),
+      const res = await fetch("/api/booking", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          roomTypeId,
+          checkIn,
+          checkOut,
+          guestName,
+          guestEmail,
+          guestPhone,
+          specialRequest,
+        }),
       });
 
-      let data: any = null;
-      let text: string | null = null;
-      try {
-        data = await res.json();
-      } catch {
-        text = await res.text().catch(() => null);
-      }
+      const data = (await res.json()) as BookingResponse;
 
-      if (!res.ok) {
-        setError(
-          (data && data.error) ||
-            text ||
-            `Failed to create booking (HTTP ${res.status}).`,
-        );
+      // 失败分支：HTTP 非 2xx 或 data.data 为空
+      if (!res.ok || !data.data) {
+        const msg =
+          data.error ||
+          data.message ||
+          "Failed to create booking.";
+        setError(msg);
         return;
       }
 
-      setBookingResult({
-        bookingId: data.bookingId,
-        status: data.status,
-        roomNumber: data.roomNumber,
-        roomTypeName: data.roomTypeName,
-        totalPrice: data.totalPrice,
-        nights: data.nights,
-      });
-    } catch (e) {
-      console.error(e);
-      setError('Unexpected error while creating booking (network).');
+      // 成功分支
+      setSuccess(
+        data.message ??
+          "Booking created successfully. Proceed to payment or confirmation.",
+      );
+      setCreatedId(data.data.id);
+    } catch (err) {
+      console.error("BookingForm submit error:", err);
+      setError("Unexpected error while creating booking.");
     } finally {
-      setSubmitting(false);
+      setIsSubmitting(false);
     }
   }
 
-  const selectedRoomType = roomTypes.find((rt) => rt.id === roomTypeId);
-
   return (
-    <form onSubmit={handleSubmitBooking} className="space-y-4">
-      <div>
-        <label className="block text-sm font-medium text-gray-900">
+    <form
+      onSubmit={handleSubmit}
+      className="space-y-6 rounded-lg border border-gray-200 bg-white p-5 shadow-sm"
+    >
+      {/* Room type */}
+      <div className="space-y-1">
+        <label className="block text-sm font-medium text-gray-700">
           Room type
         </label>
         <select
+          className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
           value={roomTypeId}
           onChange={(e) => setRoomTypeId(e.target.value)}
-          className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-green-600 focus:outline-none focus:ring-1 focus:ring-green-600"
         >
           {roomTypes.map((rt) => (
             <option key={rt.id} value={rt.id}>
-              {rt.name} (from RM{rt.basePrice} / night)
+              {rt.name} · up to {rt.capacity} pax
             </option>
           ))}
         </select>
-        {selectedRoomType?.description && (
-          <p className="mt-1 text-xs text-gray-600">
-            {selectedRoomType.description}
+        {selectedRoomType && (
+          <p className="text-xs text-gray-500">
+            {selectedRoomType.description} · From{" "}
+            <span className="font-semibold">
+              RM {(selectedRoomType.basePrice / 100).toFixed(2)}
+            </span>{" "}
+            per night
           </p>
         )}
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
+      {/* Dates */}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div>
-          <label className="block text-sm font-medium text-gray-900">
-            Check-in date
+          <label className="block text-sm font-medium text-gray-700">
+            Check-in
           </label>
           <input
             type="date"
+            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
             value={checkIn}
             onChange={(e) => setCheckIn(e.target.value)}
-            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-green-600 focus:outline-none focus:ring-1 focus:ring-green-600"
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-900">
-            Check-out date
+          <label className="block text-sm font-medium text-gray-700">
+            Check-out
           </label>
           <input
             type="date"
+            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
             value={checkOut}
             onChange={(e) => setCheckOut(e.target.value)}
-            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-green-600 focus:outline-none focus:ring-1 focus:ring-green-600"
           />
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
+      {/* Guest info */}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div>
-          <label className="block text-sm font-medium text-gray-900">
-            Your name
+          <label className="block text-sm font-medium text-gray-700">
+            Guest name
           </label>
           <input
             type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-green-600 focus:outline-none focus:ring-1 focus:ring-green-600"
-            placeholder="Full name"
+            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            value={guestName}
+            onChange={(e) => setGuestName(e.target.value)}
+            placeholder="Your full name"
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-900">
-            Email
+          <label className="block text-sm font-medium text-gray-700">
+            Guest email
           </label>
           <input
             type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-green-600 focus:outline-none focus:ring-1 focus:ring-green-600"
+            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            value={guestEmail}
+            onChange={(e) => setGuestEmail(e.target.value)}
             placeholder="you@example.com"
           />
         </div>
       </div>
 
+      <div>
+        <label className="block text-sm font-medium text-gray-700">
+          Guest phone (optional)
+        </label>
+        <input
+          type="tel"
+          className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+          value={guestPhone}
+          onChange={(e) => setGuestPhone(e.target.value)}
+          placeholder="+60..."
+        />
+      </div>
+
+      {/* Special request */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700">
+          Special request (optional)
+        </label>
+        <textarea
+          className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+          rows={3}
+          value={specialRequest}
+          onChange={(e) => setSpecialRequest(e.target.value)}
+          placeholder="E.g. late check-in, baby cot, etc."
+        />
+      </div>
+
+      {/* Summary */}
+      <div className="rounded-md bg-gray-50 p-3 text-xs text-gray-700">
+        <p>
+          Nights:{" "}
+          <span className="font-semibold">
+            {nights > 0 ? nights : "-"}
+          </span>
+        </p>
+        <p>
+          Estimated total:{" "}
+          <span className="font-semibold">
+            {estimatedTotal !== null
+              ? `RM ${estimatedTotal.toFixed(2)}`
+              : "-"}
+          </span>
+        </p>
+      </div>
+
+      {/* Messages */}
       {error && (
-        <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">
+        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
           {error}
         </div>
       )}
-
-      {availabilityResult && (
-        <div
-          className={`rounded-md px-3 py-2 text-sm ${
-            availabilityResult.isAvailable
-              ? 'bg-green-50 text-green-800'
-              : 'bg-amber-50 text-amber-800'
-          }`}
-        >
-          {availabilityResult.isAvailable ? (
-            <p>
-              There are{' '}
-              <span className="font-semibold">
-                {availabilityResult.availableCount}
-              </span>{' '}
-              room(s) available for the selected dates.
-            </p>
-          ) : (
-            <p>
-              The selected room type appears to be fully booked for these
-              dates.
+      {success && (
+        <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+          <p>{success}</p>
+          {createdId && (
+            <p className="mt-1">
+              Booking ID:{" "}
+              <span className="font-mono text-[11px]">
+                {createdId}
+              </span>
             </p>
           )}
-          <p className="mt-1 text-xs">
-            Total rooms of this type: {availabilityResult.totalRooms}.
-          </p>
         </div>
       )}
 
-      {bookingResult && (
-        <div className="rounded-md bg-green-50 px-3 py-2 text-sm text-green-800">
-          <p className="font-semibold">
-            Booking created with ID: {bookingResult.bookingId}
-          </p>
-          <p className="mt-1">
-            Room:{' '}
-            <span className="font-medium">
-              {bookingResult.roomTypeName} #{bookingResult.roomNumber}
-            </span>
-          </p>
-          <p className="mt-1">
-            Nights: {bookingResult.nights} · Total price: RM
-            {bookingResult.totalPrice}
-          </p>
-          <p className="mt-1 text-xs">
-            Status in system: {bookingResult.status}. Farm staff can now review
-            and follow up with you.
-          </p>
-        </div>
-      )}
-
-      <div className="flex items-center gap-3">
-        <button
-          type="button"
-          onClick={handleCheckAvailability}
-          disabled={checking}
-          className="inline-flex items-center rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {checking ? 'Checking...' : 'Check availability'}
-        </button>
-
+      {/* Submit */}
+      <div className="flex items-center justify-between gap-3">
         <button
           type="submit"
-          disabled={submitting}
-          className="inline-flex items-center rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
+          disabled={isSubmitting}
+          className="inline-flex items-center rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {submitting ? 'Submitting...' : 'Create booking'}
+          {isSubmitting ? "Creating booking..." : "Create booking"}
         </button>
+        <p className="text-[11px] text-gray-500">
+          This is a demo form for testing the booking engine.
+        </p>
       </div>
     </form>
   );
