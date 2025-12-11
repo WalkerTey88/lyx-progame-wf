@@ -1,109 +1,158 @@
 // prisma/schema.prisma
+
 generator client {
   provider = "prisma-client-js"
 }
+
 datasource db {
   provider = "postgresql"
 }
+
 ///////////////////////////////////////////////////////////////
-// User & Auth
+// Enums
 ///////////////////////////////////////////////////////////////
-model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  name      String?
-  password  String?
-  role      UserRole @default(GUEST)
-  bookings  Booking[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
+
 enum UserRole {
   ADMIN
   GUEST
 }
-///////////////////////////////////////////////////////////////
-// Room Types & Rooms
-///////////////////////////////////////////////////////////////
-model RoomType {
-  id            String           @id @default(uuid())
-  name          String
-  description   String?
-  basePrice     Int              // 单位：分（sen）
-  capacity      Int              // 最大入住人数
-  images        String[]         @default([])
-  rooms         Room[]
-  priceCalendar PriceCalendar[]
-  blockDates    RoomBlockDate[]
-  bookings      Booking[]
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
-}
-model Room {
-  id          String      @id @default(uuid())
-  roomNumber  String
-  roomTypeId  String
-  roomType    RoomType    @relation(fields: [roomTypeId], references: [id])
-  bookings    Booking[]
-  blockDates  RoomBlockDate[]
-  isActive    Boolean     @default(true)
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
-  @@unique([roomTypeId, roomNumber])
-}
-///////////////////////////////////////////////////////////////
-// Pricing & Block Dates
-///////////////////////////////////////////////////////////////
-model PriceCalendar {
-  id         String    @id @default(uuid())
-  roomTypeId String
-  roomType   RoomType  @relation(fields: [roomTypeId], references: [id])
-  date       DateTime
-  price      Int       // 该日期的每晚房价（分）
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
-  @@unique([roomTypeId, date])
-}
-model RoomBlockDate {
-  id         String    @id @default(uuid())
-  roomId     String?
-  roomTypeId String?
-  room       Room?     @relation(fields: [roomId], references: [id])
-  roomType   RoomType? @relation(fields: [roomTypeId], references: [id])
-  date       DateTime
-  reason     String?
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
-}
-///////////////////////////////////////////////////////////////
-// Booking
-///////////////////////////////////////////////////////////////
+
 enum BookingStatus {
   PENDING
   PAID
   CANCELLED
   COMPLETED
 }
+
+///////////////////////////////////////////////////////////////
+// User & Auth
+///////////////////////////////////////////////////////////////
+
+model User {
+  id        String    @id @default(uuid())
+  email     String    @unique
+  name      String?
+  password  String?
+  role      UserRole  @default(GUEST)
+
+  bookings  Booking[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+///////////////////////////////////////////////////////////////
+// Room Types & Rooms
+///////////////////////////////////////////////////////////////
+
+model RoomType {
+  id           String           @id @default(uuid())
+  name         String
+  description  String?
+  basePrice    Int              // 基础每晚价格（单位：分 / sen）
+  capacity     Int              // 最大入住人数
+  images       String[]         @default([]) // 房型图片 URL 列表
+
+  rooms        Room[]
+  priceCalendar PriceCalendar[]
+  blockDates   RoomBlockDate[]  @relation("RoomTypeBlockDates")
+  bookings     Booking[]
+
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  // 方便通过 name 做 upsert
+  @@unique([name])
+}
+
+model Room {
+  id          String          @id @default(uuid())
+  roomNumber  String
+  roomTypeId  String
+
+  roomType    RoomType        @relation(fields: [roomTypeId], references: [id])
+  isActive    Boolean         @default(true)
+
+  bookings    Booking[]
+  blockDates  RoomBlockDate[] @relation("RoomBlockDates")
+
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  // 同一房型下房号唯一
+  @@unique([roomTypeId, roomNumber])
+}
+
+///////////////////////////////////////////////////////////////
+// Pricing & Block Dates
+///////////////////////////////////////////////////////////////
+
+model PriceCalendar {
+  id          String     @id @default(uuid())
+
+  roomTypeId  String
+  roomType    RoomType   @relation(fields: [roomTypeId], references: [id])
+
+  date        DateTime   // 当天 00:00
+  price       Int        // 当天价格（单位：分 / sen）
+
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@unique([roomTypeId, date])
+}
+
+model RoomBlockDate {
+  id          String    @id @default(uuid())
+
+  // 可选：按房型整体封锁
+  roomTypeId  String?
+  roomType    RoomType? @relation("RoomTypeBlockDates", fields: [roomTypeId], references: [id])
+
+  // 可选：按具体房间封锁
+  roomId      String?
+  room        Room?     @relation("RoomBlockDates", fields: [roomId], references: [id])
+
+  startDate   DateTime
+  endDate     DateTime
+  reason      String?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([roomTypeId, startDate, endDate])
+  @@index([roomId, startDate, endDate])
+}
+
+///////////////////////////////////////////////////////////////
+// Booking
+///////////////////////////////////////////////////////////////
+
 model Booking {
-  id             String        @id @default(uuid())
-  userId         String?
-  roomId         String
-  roomTypeId     String
-  user           User?         @relation(fields: [userId], references: [id])
-  room           Room          @relation(fields: [roomId], references: [id])
-  roomType       RoomType      @relation(fields: [roomTypeId], references: [id])
-  guestName      String
-  guestEmail     String
-  guestPhone     String
-  checkIn        DateTime
-  checkOut       DateTime
-  totalPrice     Int
-  status         BookingStatus @default(PENDING)
-  specialRequest String?
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-  @@index([roomTypeId])
-  @@index([roomId])
-  @@index([checkIn])
-  @@index([checkOut])
+  id            String         @id @default(uuid())
+
+  userId        String?
+  roomId        String
+  roomTypeId    String
+
+  guestName     String
+  guestEmail    String
+  guestPhone    String
+  specialRequest String?       // 新增：客人特殊需求
+
+  checkIn       DateTime       // 入住日 00:00
+  checkOut      DateTime       // 退房日 00:00（不住这晚）
+
+  totalPrice    Int            // 总价（单位：分 / sen）
+  status        BookingStatus  @default(PENDING)
+
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  user          User?          @relation(fields: [userId], references: [id])
+  room          Room           @relation(fields: [roomId], references: [id])
+  roomType      RoomType       @relation(fields: [roomTypeId], references: [id])
+
+  @@index([roomTypeId, checkIn, checkOut])
+  @@index([roomId, checkIn, checkOut])
 }

@@ -1,201 +1,156 @@
 // prisma/seed.mjs
-import { PrismaClient, BookingStatus } from "@prisma/client";
 
-const prisma = new PrismaClient();
+import { PrismaClient, UserRole, BookingStatus } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
 
-function buildRoomNumber(prefix, index) {
-  const num = String(index).padStart(2, "0");
-  return `${prefix}-${num}`;
-}
+const adapter = new PrismaPg({
+  connectionString: process.env.DATABASE_URL,
+});
 
-function buildDateRange(daysAhead) {
-  const dates = [];
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-
-  for (let i = 0; i < daysAhead; i++) {
-    const d = new Date(start);
-    d.setDate(start.getDate() + i);
-    dates.push(d);
-  }
-  return dates;
-}
-
-function isWeekend(d) {
-  const day = d.getDay();
-  return day === 0 || day === 6;
-}
+const prisma = new PrismaClient({ adapter });
 
 async function main() {
-  console.log("=== Walters Farm seed started ===");
+  console.log("Seeding started...");
 
-  await prisma.booking.deleteMany();
-  await prisma.roomBlockDate.deleteMany();
-  await prisma.priceCalendar.deleteMany();
-  await prisma.room.deleteMany();
-  await prisma.roomType.deleteMany();
-  await prisma.user.deleteMany();
-
-  console.log("Base tables cleared.");
-
-  const adminEmail = process.env.ADMIN_EMAIL || "admin@walterfarm.local";
-
-  const adminUser = await prisma.user.create({
-    data: {
-      email: adminEmail,
-      name: "Admin",
-      password: null,
-      role: "ADMIN",
+  // 1) 管理员账号（开发用）
+  const admin = await prisma.user.upsert({
+    where: { email: "admin@walterfarm.local" },
+    update: {},
+    create: {
+      email: "admin@walterfarm.local",
+      name: "Walter Farm Admin",
+      // 开发阶段临时密码，后面接入真正登录再改
+      password: "admin123456789",
+      role: UserRole.ADMIN,
     },
   });
+  console.log("Admin ready:", admin.email);
 
-  console.log(`Admin user created: ${adminUser.email}`);
-
+  // 2) 房型数据（不再用 upsert(where.name），改成 findFirst + update/create）
   const roomTypesSeed = [
     {
-      code: "STD",
-      name: "Standard Chalet",
-      description: "Cozy chalet suitable for 2–3 pax with basic amenities.",
-      basePrice: 18000,
-      capacity: 3,
-      images: ["/images/rooms/standard-1.jpg", "/images/rooms/standard-2.jpg"],
+      name: "Standard Room",
+      description: "Standard room for 2 pax",
+      basePrice: 15000, // RM 150.00（单位：分 / sen）
+      capacity: 2,
+      code: "ST",
     },
     {
-      code: "FAM",
-      name: "Family Suite",
-      description: "Family suite for 4–6 pax with living area.",
-      basePrice: 26000,
-      capacity: 6,
-      images: ["/images/rooms/family-1.jpg", "/images/rooms/family-2.jpg"],
-    },
-    {
-      code: "DORM",
-      name: "Dormitory Room",
-      description: "Dormitory-style room for groups/students (up to 8 pax).",
-      basePrice: 12000,
-      capacity: 8,
-      images: ["/images/rooms/dorm-1.jpg"],
+      name: "Family Room",
+      description: "Family room for 4 pax",
+      basePrice: 26000, // RM 260.00（单位：分 / sen）
+      capacity: 4,
+      code: "FA",
     },
   ];
 
-  const roomTypes = [];
-
   for (const rt of roomTypesSeed) {
-    const created = await prisma.roomType.create({
-      data: {
-        name: rt.name,
-        description: rt.description,
-        basePrice: rt.basePrice,
-        capacity: rt.capacity,
-        images: rt.images,
-      },
+    const { code, ...roomTypeData } = rt;
+
+    // 先查有没有同名的
+    const existing = await prisma.roomType.findFirst({
+      where: { name: roomTypeData.name },
     });
 
-    roomTypes.push({ ...created, code: rt.code });
+    let roomType;
 
-    console.log(`RoomType created: ${created.name} (${rt.code})`);
-
-    const roomsToCreate = [];
-    for (let i = 1; i <= 10; i++) {
-      roomsToCreate.push({
-        roomNumber: buildRoomNumber(rt.code, i),
-        roomTypeId: created.id,
-        isActive: true,
+    if (existing) {
+      roomType = await prisma.roomType.update({
+        where: { id: existing.id },
+        data: {
+          description: roomTypeData.description,
+          basePrice: roomTypeData.basePrice,
+          capacity: roomTypeData.capacity,
+        },
       });
+      console.log(`RoomType updated: ${roomType.name}`);
+    } else {
+      roomType = await prisma.roomType.create({
+        data: {
+          ...roomTypeData,
+          images: [],
+        },
+      });
+      console.log(`RoomType created: ${roomType.name}`);
     }
 
-    await prisma.room.createMany({ data: roomsToCreate });
-    console.log(`  -> ${roomsToCreate.length} rooms created for ${created.name}`);
-  }
+    // 每个房型 10 间房，避免重复（skipDuplicates）
+    const roomsData = Array.from({ length: 10 }).map((_, index) => ({
+      roomTypeId: roomType.id,
+      roomNumber: `${code}-${String(index + 1).padStart(2, "0")}`, // ST-01, ST-02...
+    }));
 
-  const dates = buildDateRange(90);
-  const priceRows = [];
-
-  for (const rt of roomTypes) {
-    for (const d of dates) {
-      let price = rt.basePrice;
-      if (isWeekend(d)) {
-        price += 2000;
-      }
-      priceRows.push({
-        roomTypeId: rt.id,
-        date: d,
-        price,
-      });
-    }
-  }
-
-  await prisma.priceCalendar.createMany({
-    data: priceRows,
-    skipDuplicates: true,
-  });
-
-  console.log(
-    `PriceCalendar created: ${priceRows.length} rows for ${roomTypes.length} room types.`,
-  );
-
-  const blockStart = new Date();
-  blockStart.setHours(0, 0, 0, 0);
-  blockStart.setDate(blockStart.getDate() + 7);
-
-  const blockDates = [];
-  for (let i = 0; i < 3; i++) {
-    const d = new Date(blockStart);
-    d.setDate(blockStart.getDate() + i);
-    blockDates.push({
-      roomTypeId: roomTypes[0].id,
-      roomId: null,
-      date: d,
-      reason: "Maintenance",
+    await prisma.room.createMany({
+      data: roomsData,
+      skipDuplicates: true,
     });
+
+    console.log(`Rooms ensured for ${roomType.name}: 10 units.`);
   }
 
-  await prisma.roomBlockDate.createMany({ data: blockDates });
-
-  console.log(`RoomBlockDate created: ${blockDates.length} days blocked.`);
-
-  const firstRoom = await prisma.room.findFirst({
-    where: { roomTypeId: roomTypes[0].id },
+  // 3) Demo 订单（方便前台 / Admin 调试）
+  const standard = await prisma.roomType.findFirst({
+    where: { name: "Standard Room" },
+    include: { rooms: true },
   });
 
-  if (firstRoom) {
-    const demoCheckIn = new Date();
-    demoCheckIn.setHours(0, 0, 0, 0);
-    demoCheckIn.setDate(demoCheckIn.getDate() + 3);
+  if (standard && standard.rooms.length > 0) {
+    const room = standard.rooms[0];
 
-    const demoCheckOut = new Date(demoCheckIn);
-    demoCheckOut.setDate(demoCheckIn.getDate() + 2);
-
-    const nights = 2;
-    const demoTotalPrice = roomTypes[0].basePrice * nights;
+    const today = new Date();
+    const checkIn = new Date(
+      today.getFullYear(),
+      today.getMonth(),
+      today.getDate() + 7,
+    );
+    const checkOut = new Date(
+      today.getFullYear(),
+      today.getMonth(),
+      today.getDate() + 9,
+    );
 
     await prisma.booking.create({
       data: {
-        roomId: firstRoom.id,
-        roomTypeId: roomTypes[0].id,
-        userId: adminUser.id,
+        userId: admin.id,
+        roomId: room.id,
+        roomTypeId: standard.id,
         guestName: "Demo Guest",
         guestEmail: "guest@example.com",
-        guestPhone: "+60123456789",
-        checkIn: demoCheckIn,
-        checkOut: demoCheckOut,
-        totalPrice: demoTotalPrice,
+        guestPhone: "0123456789",
+        specialRequest: "Late check-in around 9pm.",
+        checkIn,
+        checkOut,
+        totalPrice: standard.basePrice * 2,
         status: BookingStatus.PAID,
-        specialRequest: "Demo booking created by seed script.",
       },
     });
 
-    console.log("Demo booking created for first room type.");
+    console.log("Demo booking created.");
+  } else {
+    console.log("Skip demo booking: Standard Room or rooms not found.");
   }
 
-  console.log("=== Walters Farm seed completed successfully ===");
+  // 4) 统计
+  const [userCount, roomTypeCount, roomCount, bookingCount] = await Promise.all([
+    prisma.user.count(),
+    prisma.roomType.count(),
+    prisma.room.count(),
+    prisma.booking.count(),
+  ]);
+
+  console.log("Seed finished:");
+  console.log(`  Users:    ${userCount}`);
+  console.log(`  RoomType: ${roomTypeCount}`);
+  console.log(`  Rooms:    ${roomCount}`);
+  console.log(`  Bookings: ${bookingCount}`);
 }
 
 main()
   .catch((e) => {
-    console.error("Seed error:", e);
+    console.error("Seeding error:", e);
     process.exit(1);
   })
   .finally(async () => {
     await prisma.$disconnect();
+    console.log("Prisma disconnected.");
   });
