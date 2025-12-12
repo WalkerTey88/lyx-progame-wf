@@ -1,11 +1,20 @@
 // app/api/admin/bookings/[id]/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { BookingStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
 function jsonError(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
 }
+
+// 本地定义 BookingStatus
+const BOOKING_STATUS_VALUES = [
+  "PENDING",
+  "PAID",
+  "CANCELLED",
+  "COMPLETED",
+] as const;
+
+type BookingStatus = (typeof BOOKING_STATUS_VALUES)[number];
 
 function assertAdmin(req: NextRequest) {
   const headerToken = req.headers.get("x-admin-token");
@@ -51,7 +60,6 @@ export async function GET(
     return NextResponse.json({ data: booking });
   } catch (error: any) {
     console.error("GET /api/admin/bookings/[id] error:", error);
-
     const status = error?.status ?? 500;
     const message =
       status === 401
@@ -100,20 +108,19 @@ export async function PATCH(
     const data: any = {};
 
     if (status !== undefined) {
-      const upper = status.toUpperCase();
-      if (!(Object.values(BookingStatus) as string[]).includes(upper)) {
+      const upper = status.toUpperCase() as BookingStatus;
+      if (!BOOKING_STATUS_VALUES.includes(upper)) {
         return jsonError(
           "Invalid status. Allowed: PENDING, PAID, CANCELLED, COMPLETED",
           400,
         );
       }
-      data.status = upper as BookingStatus;
+      data.status = upper;
     }
 
     if (specialRequest !== undefined) {
       data.specialRequest = specialRequest;
     }
-
     if (guestName !== undefined) data.guestName = guestName;
     if (guestEmail !== undefined) data.guestEmail = guestEmail;
     if (guestPhone !== undefined) data.guestPhone = guestPhone;
@@ -169,9 +176,7 @@ export async function DELETE(
 
     const updated = await prisma.booking.update({
       where: { id },
-      data: {
-        status: BookingStatus.CANCELLED,
-      },
+      data: { status: "CANCELLED" as BookingStatus },
       include: {
         room: true,
         roomType: true,
