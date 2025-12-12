@@ -1,145 +1,139 @@
 // app/api/booking/check-availability/route.ts
+
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { BookingStatus } from "@prisma/client";
 
-const ACTIVE_BOOKING_STATUSES: BookingStatus[] = [
-  "PENDING",
-  "PAID",
-  "COMPLETED",
-];
+// 明确声明动态 Route，避免 Next/Vercel 试图做静态优化
+export const dynamic = "force-dynamic";
 
-function parseDate(value: unknown): Date | null {
-  if (typeof value !== "string") return null;
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return null;
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
+// 视为“占用”的订单状态（和 /api/booking 逻辑保持一致）
+const ACTIVE_BOOKING_STATUSES = ["PENDING", "PAID"] as const;
 
-function diffNights(checkIn: Date, checkOut: Date): number {
-  const ms = checkOut.getTime() - checkIn.getTime();
-  const nights = Math.round(ms / (1000 * 60 * 60 * 24));
-  return nights;
-}
-
-export async function POST(req: NextRequest) {
+export async function GET(req: NextRequest) {
   try {
-    const body = await req.json();
+    const { searchParams } = new URL(req.url);
 
-    const roomTypeId = body?.roomTypeId as string | undefined;
-    const guests = Number(body?.guests ?? 0);
+    const roomTypeId = searchParams.get("roomTypeId");
+    const checkInStr = searchParams.get("checkIn");
+    const checkOutStr = searchParams.get("checkOut");
 
-    const checkIn = parseDate(body?.checkIn);
-    const checkOut = parseDate(body?.checkOut);
-
-    if (!roomTypeId || !checkIn || !checkOut) {
+    if (!roomTypeId || !checkInStr || !checkOutStr) {
       return NextResponse.json(
-        { error: "roomTypeId, checkIn, checkOut are required" },
-        { status: 400 },
+        { error: "Missing roomTypeId, checkIn or checkOut" },
+        { status: 400 }
       );
     }
 
-    const nights = diffNights(checkIn, checkOut);
-    if (nights <= 0) {
+    const checkIn = new Date(checkInStr);
+    const checkOut = new Date(checkOutStr);
+
+    if (Number.isNaN(checkIn.getTime()) || Number.isNaN(checkOut.getTime())) {
       return NextResponse.json(
-        { error: "checkOut must be later than checkIn" },
-        { status: 400 },
+        { error: "Invalid checkIn or checkOut date" },
+        { status: 400 }
       );
     }
 
-    const roomType = await prisma.roomType.findUnique({
-      where: { id: roomTypeId },
+    if (checkOut <= checkIn) {
+      return NextResponse.json(
+        { error: "checkOut must be after checkIn" },
+        { status: 400 }
+      );
+    }
+
+    // 1）拿到这个房型下所有启用中的房间
+    const rooms = await prisma.room.findMany({
+      where: {
+        roomTypeId,
+        isActive: true,
+      },
+      orderBy: { roomNumber: "asc" },
     });
 
-    if (!roomType) {
-      return NextResponse.json(
-        { error: "Room type not found" },
-        { status: 404 },
-      );
-    }
-
-    if (guests > 0 && guests > roomType.capacity) {
-      return NextResponse.json(
-        { error: "Guest count exceeds room type capacity" },
-        { status: 400 },
-      );
-    }
-
-    // 房型可用房间总数
-    const totalRooms = await prisma.room.count({
-      where: { roomTypeId, isActive: true },
-    });
-
-    if (totalRooms === 0) {
+    if (rooms.length === 0) {
       return NextResponse.json({
         available: false,
-        availableRooms: 0,
-        nights,
-        pricePerNight: roomType.basePrice,
-        totalPricePerRoom: nights * roomType.basePrice,
+        reason: "NO_ACTIVE_ROOMS",
       });
     }
 
-    // 当前时间段内，该房型已有订单数量（简化：1 订单占 1 间房）
-    const activeBookingsCount = await prisma.booking.count({
+    const roomIds = rooms.map((r) => r.id);
+
+    // 2）查有无与时间段重叠的有效订单
+    const overlappingBookings = await prisma.booking.findMany({
       where: {
-        roomTypeId,
-        status: { in: ACTIVE_BOOKING_STATUSES },
-        NOT: {
-          OR: [
-            { checkOut: { lte: checkIn } },
-            { checkIn: { gte: checkOut } },
-          ],
+        roomId: { in: roomIds },
+        status: {
+          in: ACTIVE_BOOKING_STATUSES as any,
         },
+        AND: [
+          { checkIn: { lt: checkOut } }, // existing.checkIn < requested.checkOut
+          { checkOut: { gt: checkIn } }, // existing.checkOut > requested.checkIn
+        ],
       },
+      select: { roomId: true },
     });
 
-    const usedRooms = activeBookingsCount;
-    const availableRooms = Math.max(totalRooms - usedRooms, 0);
-    const available = availableRooms > 0;
-
-    // 按 PriceCalendar 计算价格（没有记录就用 basePrice）
-    const priceRows = await prisma.priceCalendar.findMany({
+    // 3）查封房日期（房间级 + 房型级），你的 RoomBlockDate 只有一个 date 字段
+    const overlappingBlocks = await prisma.roomBlockDate.findMany({
       where: {
-        roomTypeId,
+        OR: [
+          { roomId: { in: roomIds } },
+          { roomTypeId },
+        ],
         date: {
           gte: checkIn,
           lt: checkOut,
         },
       },
+      select: { roomId: true },
     });
 
-    const priceMap = new Map<string, number>();
-    for (const row of priceRows) {
-      const key = row.date.toISOString().slice(0, 10);
-      priceMap.set(key, row.price);
+    const bookedRoomIds = new Set(
+      overlappingBookings
+        .map((b) => b.roomId)
+        .filter((id): id is string => !!id)
+    );
+
+    const blockedRoomIds = new Set(
+      overlappingBlocks
+        .map((b) => b.roomId)
+        .filter((id): id is string => !!id)
+    );
+
+    // 4）挑一个既没被预订也没被封的房间
+    const availableRoom = rooms.find(
+      (r) => !bookedRoomIds.has(r.id) && !blockedRoomIds.has(r.id)
+    );
+
+    if (!availableRoom) {
+      return NextResponse.json({ available: false });
     }
 
-    let totalPricePerRoom = 0;
-    let cursor = new Date(checkIn);
+    // 5）算价格（用 RoomType.basePrice * 晚数）
+    const roomType = await prisma.roomType.findUnique({
+      where: { id: roomTypeId },
+    });
 
-    for (let i = 0; i < nights; i++) {
-      const key = cursor.toISOString().slice(0, 10);
-      const price = priceMap.get(key) ?? roomType.basePrice;
-      totalPricePerRoom += price;
-      cursor.setDate(cursor.getDate() + 1);
-    }
+    const msPerNight = 1000 * 60 * 60 * 24;
+    const nightsRaw = (checkOut.getTime() - checkIn.getTime()) / msPerNight;
+    const nights = Math.max(1, Math.round(nightsRaw));
 
-    const pricePerNight = Math.round(totalPricePerRoom / nights);
+    const nightlyPrice = roomType?.basePrice ?? 0;
+    const totalPrice = nightlyPrice * nights;
 
     return NextResponse.json({
-      available,
-      availableRooms,
+      available: true,
+      roomId: availableRoom.id,
       nights,
-      pricePerNight,
-      totalPricePerRoom,
+      nightlyPrice,
+      totalPrice,
     });
   } catch (error) {
     console.error("[booking/check-availability] error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }
