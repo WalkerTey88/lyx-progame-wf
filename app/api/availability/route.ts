@@ -3,11 +3,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-// 告诉 Next：这个 Route 永远是动态，别尝试做静态优化
+// 告诉 Next：这个 Route 永远是动态，避免静态缓存
 export const dynamic = "force-dynamic";
 
-// 用字符串常量表示“占用状态”，避免从 @prisma/client 导入 BookingStatus 枚举
-const ACTIVE_BOOKING_STATUS = ["PENDING", "PAID"] as const;
+// 使用普通可变数组，而不是 readonly
+const ACTIVE_BOOKING_STATUS: ("PENDING" | "PAID")[] = ["PENDING", "PAID"];
 
 export async function GET(req: NextRequest) {
   try {
@@ -17,6 +17,7 @@ export async function GET(req: NextRequest) {
     const checkInParam = searchParams.get("checkIn");
     const checkOutParam = searchParams.get("checkOut");
 
+    // 1. 参数校验
     if (!roomIdParam || !checkInParam || !checkOutParam) {
       return NextResponse.json(
         { error: "Missing roomId, checkIn or checkOut" },
@@ -28,6 +29,7 @@ export async function GET(req: NextRequest) {
     const checkIn = new Date(checkInParam);
     const checkOut = new Date(checkOutParam);
 
+    // 日期是否合法
     if (Number.isNaN(checkIn.getTime()) || Number.isNaN(checkOut.getTime())) {
       return NextResponse.json(
         { error: "Invalid checkIn or checkOut date" },
@@ -35,53 +37,63 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    if (checkOut <= checkIn) {
+    // 入住时间必须早于退房时间
+    if (checkIn >= checkOut) {
       return NextResponse.json(
-        { error: "checkOut must be after checkIn" },
+        { error: "checkIn must be earlier than checkOut" },
         { status: 400 }
       );
     }
 
-    // 1）确认房间存在
+    // 2. 房间是否存在 + 是否启用
     const room = await prisma.room.findUnique({
       where: { id: roomId },
     });
 
-    if (!room) {
-      return NextResponse.json({ error: "Room not found" }, { status: 404 });
+    if (!room || !room.isActive) {
+      return NextResponse.json(
+        { error: "Room not found or inactive" },
+        { status: 404 }
+      );
     }
 
-    // 2）查是否有与请求日期重叠的有效订单
+    // 3. 是否有重叠 Booking（PENDING / PAID）
+    // 区间重叠条件：[A,B) 与 [C,D) 重叠 ⇔ A < D 且 C < B
     const overlappingBookings = await prisma.booking.findMany({
       where: {
         roomId,
-        status: {
-          in: ACTIVE_BOOKING_STATUS as any,
-        },
+        status: { in: ACTIVE_BOOKING_STATUS },
         AND: [
-          { checkIn: { lt: checkOut } }, // existing.checkIn < requested.checkOut
-          { checkOut: { gt: checkIn } }, // existing.checkOut > requested.checkIn
+          {
+            checkIn: {
+              lt: checkOut,
+            },
+          },
+          {
+            checkOut: {
+              gt: checkIn,
+            },
+          },
         ],
       },
     });
 
-    // 3）查封房日期（房间级 + 房型级），你的模型只有 date 字段
-    const overlappingBlocks = await prisma.roomBlockDate.findMany({
-      where: {
-        OR: [{ roomId }, { roomTypeId: room.roomTypeId }],
-        date: {
-          gte: checkIn,
-          lt: checkOut,
+    // 当前版本：只基于 Booking 判断是否可订
+    const isAvailable = overlappingBookings.length === 0;
+
+    return NextResponse.json(
+      {
+        available: isAvailable,
+        conflicts: {
+          bookings: overlappingBookings.length,
+          // 封房逻辑后续根据你的 RoomBlockDate 模型再补
+          blockDates: 0,
         },
       },
-    });
-
-    const isAvailable =
-      overlappingBookings.length === 0 && overlappingBlocks.length === 0;
-
-    return NextResponse.json({ available: isAvailable });
+      { status: 200 }
+    );
   } catch (error) {
-    console.error("[availability] error:", error);
+    console.error("[AVAILABILITY_GET_ERROR]", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
