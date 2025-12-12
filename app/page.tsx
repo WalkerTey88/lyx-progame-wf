@@ -28,13 +28,13 @@ export default function HomePage() {
                 href="/booking"
                 className="rounded-full bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md hover:bg-emerald-700"
               >
-                Check availability &amp; book
+                Check availability
               </Link>
               <Link
                 href="/accommodation"
                 className="rounded-full border border-emerald-600 px-5 py-2.5 text-sm font-semibold text-emerald-700 hover:bg-emerald-50"
               >
-                View farmstay rooms
+                View rooms
               </Link>
             </div>
 
@@ -56,10 +56,6 @@ export default function HomePage() {
                 priority
               />
             </div>
-            <p className="mt-2 text-[11px] text-gray-500">
-              Reference visual: farm entrance / overview. You can replace this
-              with any official hero image you prefer.
-            </p>
           </div>
         </div>
       </section>
@@ -178,7 +174,7 @@ export default function HomePage() {
             href="/booking"
             className="rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-emerald-800 shadow-md hover:bg-emerald-50"
           >
-            Go to booking form
+            Check availability
           </Link>
         </div>
       </section>
