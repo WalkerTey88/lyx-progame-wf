@@ -1,4 +1,3 @@
-cat <<'EOF' > "$ROOT/.env.example"
 ############################################################
 # Database
 ############################################################
@@ -32,4 +31,3 @@ RESEND_FROM_EMAIL="booking@yourdomain.com"
 AUTH_SECRET="REPLACE_ME_LONG_RANDOM"
 ADMIN_EMAIL="admin@yourdomain.com"
 ADMIN_PASSWORD="REPLACE_ME_STRONG_PASSWORD"
-EOF
