@@ -1,12 +1,19 @@
 // app/api/admin/rooms/route.ts
-import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { requireAdmin } from "@/lib/admin-auth";
 
-export async function GET() {
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+export async function GET(req: NextRequest) {
+  const guard = await requireAdmin(req);
+  if (guard) return guard;
+
   try {
     const rooms = await prisma.room.findMany({
       orderBy: {
-        roomNumber: 'asc',
+        roomNumber: "asc",
       },
       include: {
         roomType: true,
@@ -15,23 +22,23 @@ export async function GET() {
 
     return NextResponse.json({ rooms });
   } catch (error) {
-    console.error('GET /api/admin/rooms error', error);
+    console.error("GET /api/admin/rooms error", error);
     return NextResponse.json(
-      { error: 'Failed to load rooms.' },
-      { status: 500 },
+      { error: "Failed to load rooms." },
+      { status: 500 }
     );
   }
 }
 
 export async function POST(req: NextRequest) {
+  const guard = await requireAdmin(req);
+  if (guard) return guard;
+
   try {
     const body = await req.json().catch(() => null);
 
-    if (!body || typeof body !== 'object') {
-      return NextResponse.json(
-        { error: 'Invalid JSON body.' },
-        { status: 400 },
-      );
+    if (!body || typeof body !== "object") {
+      return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
     }
 
     const { roomTypeId, roomNumber, isActive } = body as {
@@ -42,8 +49,8 @@ export async function POST(req: NextRequest) {
 
     if (!roomTypeId || !roomNumber) {
       return NextResponse.json(
-        { error: 'roomTypeId and roomNumber are required.' },
-        { status: 400 },
+        { error: "roomTypeId and roomNumber are required." },
+        { status: 400 }
       );
     }
 
@@ -57,10 +64,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ room }, { status: 201 });
   } catch (error) {
-    console.error('POST /api/admin/rooms error', error);
-    return NextResponse.json(
-      { error: 'Failed to create room.' },
-      { status: 500 },
-    );
+    console.error("POST /api/admin/rooms error", error);
+    return NextResponse.json({ error: "Failed to create room." }, { status: 500 });
   }
 }

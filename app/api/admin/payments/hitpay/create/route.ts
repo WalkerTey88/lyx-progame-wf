@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
-  const guard = requireAdmin(req);
+  const guard = await requireAdmin(req);
   if (guard) return guard;
 
   try {
@@ -17,7 +17,9 @@ export async function POST(req: NextRequest) {
     }
 
     const bookingId = String(body.bookingId);
-    const idempotencyKey = body.idempotencyKey ? String(body.idempotencyKey) : undefined;
+    const idempotencyKey = body.idempotencyKey
+      ? String(body.idempotencyKey)
+      : undefined;
 
     const result = await ensureHitPayPaymentForBooking({
       bookingId,

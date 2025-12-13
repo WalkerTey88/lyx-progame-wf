@@ -1,12 +1,13 @@
 // app/api/admin/bookings/[id]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireAdmin } from "@/lib/admin-auth";
 
 function jsonError(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
 }
 
-// 本地定义 BookingStatus
+// 本地定义 BookingStatus（避免直接从 @prisma/client 导入枚举）
 const BOOKING_STATUS_VALUES = [
   "PENDING",
   "PAYMENT_PENDING",
@@ -19,29 +20,15 @@ const BOOKING_STATUS_VALUES = [
 
 type BookingStatus = (typeof BOOKING_STATUS_VALUES)[number];
 
-function assertAdmin(req: NextRequest) {
-  const headerToken = req.headers.get("x-admin-token");
-  const expected = process.env.ADMIN_API_TOKEN;
-
-  if (!expected) {
-    throw Object.assign(new Error("ADMIN_API_TOKEN is not configured"), {
-      status: 500,
-    });
-  }
-
-  if (!headerToken || headerToken !== expected) {
-    throw Object.assign(new Error("Unauthorized"), { status: 401 });
-  }
-}
-
 // GET /api/admin/bookings/:id
 export async function GET(
   req: NextRequest,
   context: { params: { id: string } },
 ) {
-  try {
-    assertAdmin(req);
+  const guard = await requireAdmin(req);
+  if (guard) return guard;
 
+  try {
     const id = context.params.id;
     if (!id) {
       return jsonError("Missing booking id", 400);
@@ -63,27 +50,20 @@ export async function GET(
     return NextResponse.json({ data: booking });
   } catch (error: any) {
     console.error("GET /api/admin/bookings/[id] error:", error);
-    const status = error?.status ?? 500;
-    const message =
-      status === 401
-        ? "Unauthorized"
-        : status === 500
-          ? "Internal server error"
-          : error?.message || "Unexpected error";
-
-    return jsonError(message, status);
+    return jsonError("Internal server error", 500);
   }
 }
 
 // PATCH /api/admin/bookings/:id
-// 用于更新订单状态 / 备注（specialRequest）
+// 用于更新订单状态 / 备注（specialRequest）以及基础联系人字段
 export async function PATCH(
   req: NextRequest,
   context: { params: { id: string } },
 ) {
-  try {
-    assertAdmin(req);
+  const guard = await requireAdmin(req);
+  if (guard) return guard;
 
+  try {
     const id = context.params.id;
     if (!id) {
       return jsonError("Missing booking id", 400);
@@ -111,10 +91,10 @@ export async function PATCH(
     const data: any = {};
 
     if (status !== undefined) {
-      const upper = status.toUpperCase() as BookingStatus;
+      const upper = String(status).toUpperCase() as BookingStatus;
       if (!BOOKING_STATUS_VALUES.includes(upper)) {
         return jsonError(
-          "Invalid status. Allowed: PENDING, PAID, CANCELLED, COMPLETED",
+          "Invalid status. Allowed: PENDING, PAYMENT_PENDING, PAID, PAYMENT_FAILED, EXPIRED, CANCELLED, COMPLETED",
           400,
         );
       }
@@ -151,15 +131,7 @@ export async function PATCH(
       return jsonError("Booking not found", 404);
     }
 
-    const status = error?.status ?? 500;
-    const message =
-      status === 401
-        ? "Unauthorized"
-        : status === 500
-          ? "Internal server error"
-          : error?.message || "Unexpected error";
-
-    return jsonError(message, status);
+    return jsonError("Internal server error", 500);
   }
 }
 
@@ -169,9 +141,10 @@ export async function DELETE(
   req: NextRequest,
   context: { params: { id: string } },
 ) {
-  try {
-    assertAdmin(req);
+  const guard = await requireAdmin(req);
+  if (guard) return guard;
 
+  try {
     const id = context.params.id;
     if (!id) {
       return jsonError("Missing booking id", 400);
@@ -198,14 +171,6 @@ export async function DELETE(
       return jsonError("Booking not found", 404);
     }
 
-    const status = error?.status ?? 500;
-    const message =
-      status === 401
-        ? "Unauthorized"
-        : status === 500
-          ? "Internal server error"
-          : error?.message || "Unexpected error";
-
-    return jsonError(message, status);
+    return jsonError("Internal server error", 500);
   }
 }

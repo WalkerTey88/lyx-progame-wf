@@ -1,22 +1,19 @@
 // app/api/admin/bookings/export/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAdminUser } from "@/lib/auth";
+import { requireAdmin } from "@/lib/admin-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
  * GET /api/admin/bookings/export
- * 导出所有订单为 CSV（仅 ADMIN / SUPERADMIN）
+ * 导出所有订单为 CSV（ADMIN）
  * 注意：当前 Booking 模型没有 createdAt 字段，因此不导出“创建时间”这一列。
  */
-export async function GET(_req: NextRequest) {
-  try {
-    await requireAdminUser();
-  } catch {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+export async function GET(req: NextRequest) {
+  const guard = await requireAdmin(req);
+  if (guard) return guard;
 
   try {
     const bookings = await prisma.booking.findMany({
@@ -72,7 +69,7 @@ export async function GET(_req: NextRequest) {
       ...rows.map((r) =>
         r
           .map((value) => {
-            const v = value ?? "";
+            const v = String(value ?? "");
             // 如果包含逗号/引号/换行，加双引号并转义内部引号
             if (/[",\n]/.test(v)) {
               return `"${v.replace(/"/g, '""')}"`;
