@@ -6,7 +6,6 @@ export default function Page({
 }: {
   searchParams?: { bookingId?: string; id?: string };
 }) {
-  // 兼容：/booking/pay?bookingId=xxx 以及历史 /booking/pay?id=xxx
   const bookingId = searchParams?.bookingId || searchParams?.id || "";
   return <PayClient bookingId={bookingId} />;
 }

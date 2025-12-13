@@ -63,10 +63,6 @@ export function BookingForm({ roomTypes }: Props) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-
-    // 关键：防双提交（消灭双 POST / 跳转被打断）
-    if (isSubmitting) return;
-
     setError(null);
     setSuccess(null);
     setCreatedId(null);
@@ -94,28 +90,28 @@ export function BookingForm({ roomTypes }: Props) {
 
       const data = (await res.json().catch(() => null)) as BookingResponse | null;
 
-      if (!res.ok || !data?.data?.id) {
+      if (!res.ok || !data?.data) {
         const msg = (data && (data.error || data.message)) || "Failed to create booking.";
         setError(msg);
         return;
       }
 
-      const bookingId = String(data.data.id);
-
       setSuccess(data.message ?? "Booking created successfully.");
-      setCreatedId(bookingId);
+      setCreatedId(data.data.id);
 
       const url = data.checkoutUrl || data.payment?.checkoutUrl || null;
       setCheckoutUrl(url);
 
       if (url) {
+        // 直接跳 HitPay Checkout
         window.location.assign(url);
         return;
       }
 
-      // 关键：fallback 不再跳 /booking/pay?id=...，统一跳 return（稳定闭环）
-      window.location.assign(`/booking/return?bookingId=${encodeURIComponent(bookingId)}`);
-      return;
+      // 没有 checkoutUrl：给 fallback（走支付页）
+      window.location.assign(
+        `/booking/pay?bookingId=${encodeURIComponent(data.data.id)}`,
+      );
     } catch (err) {
       console.error("BookingForm submit error:", err);
       setError("Unexpected error while creating booking.");
@@ -238,24 +234,11 @@ export function BookingForm({ roomTypes }: Props) {
       {success && (
         <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
           <p>{success}</p>
-
           {createdId && (
-            <>
-              <p className="mt-1">
-                Booking ID: <span className="font-mono text-[11px]">{createdId}</span>
-              </p>
-              <p className="mt-1">
-                Continue:{" "}
-                <a
-                  className="underline"
-                  href={`/booking/return?bookingId=${encodeURIComponent(createdId)}`}
-                >
-                  Open booking status
-                </a>
-              </p>
-            </>
+            <p className="mt-1">
+              Booking ID: <span className="font-mono text-[11px]">{createdId}</span>
+            </p>
           )}
-
           {checkoutUrl && (
             <p className="mt-1 break-all">
               Checkout URL: <span className="font-mono text-[11px]">{checkoutUrl}</span>
