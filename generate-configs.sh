@@ -1,33 +1,53 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+ROOT="$(cd "$ROOT" && pwd)"
+
+if [[ -z "${ROOT}" || "${ROOT}" == "/" ]]; then
+  echo "FATAL: invalid ROOT='${ROOT}'. Abort."
+  exit 1
+fi
+
+umask 027
+
+write_file() {
+  local rel="$1"
+  local target="${ROOT}/${rel}"
+  local tmp
+
+  mkdir -p "$(dirname "$target")"
+  tmp="$(mktemp "${target}.tmp.XXXXXX")"
+  cat > "$tmp"
+  mv -f "$tmp" "$target"
+}
+
+echo "ROOT=${ROOT}"
+
+########################################
+# .env.example（必须：仅示例，不放真实密钥）
+########################################
+write_file ".env.example" <<'EOT'
 ############################################################
 # Database
 ############################################################
-DATABASE_URL="postgresql://USER:PASSWORD@HOST:5432/DB?sslmode=require"
+DATABASE_URL="postgresql://USER:PASSWORD@HOST/DATABASE?sslmode=require"
 
 ############################################################
-# Site Base URL (用于拼 redirect_url / webhookUrl)
-# 二选一即可：建议用 NEXT_PUBLIC_SITE_URL
+# Admin/Auth
 ############################################################
-NEXT_PUBLIC_SITE_URL="https://your-domain.vercel.app"
-# APP_BASE_URL="https://your-domain.vercel.app"
+ADMIN_JWT_SECRET="change-this-to-a-long-random-secret"
 
 ############################################################
-# HitPay
-# Sandbox: https://api.sandbox.hit-pay.com
-# Production: https://api.hit-pay.com
+# Payments (Optional)
 ############################################################
-HITPAY_API_BASE_URL="https://api.sandbox.hit-pay.com"
-HITPAY_API_KEY="REPLACE_ME"
-HITPAY_SALT="REPLACE_ME"
+STRIPE_SECRET_KEY="sk_test_***"
 
 ############################################################
-# Email (Resend)
+# Email (Optional)
 ############################################################
-RESEND_API_KEY="REPLACE_ME"
-RESEND_FROM_EMAIL="booking@yourdomain.com"
+RESEND_API_KEY="re_***"
+RESEND_FROM_EMAIL="booking@your-domain.com"
+EOT
 
-############################################################
-# Auth / Admin
-############################################################
-AUTH_SECRET="REPLACE_ME_LONG_RANDOM"
-ADMIN_EMAIL="admin@yourdomain.com"
-ADMIN_PASSWORD="REPLACE_ME_STRONG_PASSWORD"
+echo "Done."
