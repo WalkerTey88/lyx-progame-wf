@@ -2,11 +2,17 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { BookingStatus } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 
 // 只允许这两种状态算“占用”
-const ACTIVE_BOOKING_STATUS: ("PENDING" | "PAID")[] = ["PENDING", "PAID"];
+const ACTIVE_BOOKING_STATUS: BookingStatus[] = [
+  BookingStatus.PENDING,
+  BookingStatus.PAYMENT_PENDING,
+  BookingStatus.PAID,
+  BookingStatus.COMPLETED,
+];
 
 interface CheckAvailabilityBody {
   roomTypeId: string;

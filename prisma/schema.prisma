@@ -19,10 +19,31 @@ enum UserRole {
 
 enum BookingStatus {
   PENDING
+  PAYMENT_PENDING
   PAID
+  PAYMENT_FAILED
+  EXPIRED
   CANCELLED
   COMPLETED
 }
+enum PaymentProvider {
+  HITPAY
+}
+
+enum PaymentChannel {
+  ONLINE
+  OFFLINE
+}
+
+enum PaymentStatus {
+  CREATED
+  PENDING
+  COMPLETED
+  FAILED
+  EXPIRED
+  CANCELLED
+}
+
 
 ///////////////////////////////////////////////////////////////
 // User & Auth
@@ -153,6 +174,66 @@ model Booking {
   room          Room           @relation(fields: [roomId], references: [id])
   roomType      RoomType       @relation(fields: [roomTypeId], references: [id])
 
+  payments      Payment[]
+
   @@index([roomTypeId, checkIn, checkOut])
   @@index([roomId, checkIn, checkOut])
+}
+
+///////////////////////////////////////////////////////////////
+// Payments (HitPay)
+///////////////////////////////////////////////////////////////
+
+model Payment {
+  id                      String          @id @default(uuid())
+  bookingId                String
+  provider                 PaymentProvider
+  channel                  PaymentChannel  @default(ONLINE)
+  status                   PaymentStatus   @default(CREATED)
+
+  // Amount in sen (MYR minor unit)
+  amount                   Int
+  currency                 String          @default("MYR")
+
+  // HitPay identifiers
+  providerPaymentRequestId String          @unique
+  providerPaymentId        String?
+
+  checkoutUrl              String?
+
+  // Idempotency key for internal create-payment requests
+  idempotencyKey           String?         @unique
+
+  // Raw create response (for troubleshooting; do not log secrets)
+  rawCreateResponse        Json?
+
+  createdAt                DateTime        @default(now())
+  updatedAt                DateTime        @updatedAt
+
+  booking                  Booking         @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  events                   PaymentEvent[]
+
+  @@index([bookingId, status])
+  @@index([provider, providerPaymentRequestId])
+}
+
+model PaymentEvent {
+  id                      String          @id @default(uuid())
+  provider                PaymentProvider
+
+  providerPaymentRequestId String
+  providerPaymentId        String?
+  status                   String?
+
+  payloadHash             String          @unique
+  rawBody                 String
+  parsed                  Json?
+
+  receivedAt              DateTime        @default(now())
+
+  paymentId               String?
+  payment                 Payment?        @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+
+  @@index([provider, providerPaymentRequestId])
+  @@index([receivedAt])
 }

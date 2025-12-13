@@ -144,7 +144,7 @@ export async function findAvailableRoomForType(
         gt: checkIn,
       },
       status: {
-        in: ["PENDING", "PAID"],
+        in: ["PENDING", "PAYMENT_PENDING", "PAID", "COMPLETED"],
       },
     },
     select: {

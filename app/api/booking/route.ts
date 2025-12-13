@@ -2,6 +2,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { ensureHitPayPaymentForBooking } from "@/lib/payment-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -214,10 +215,20 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    // Create HitPay payment request (FPX / TNG / DuitNow via HitPay checkout)
+    const payment = await ensureHitPayPaymentForBooking({
+      bookingId: booking.id,
+      channel: "ONLINE",
+      idempotencyKey: `HP:${booking.id}`,
+    });
+
+
     return NextResponse.json(
       {
         data: booking,
-        message: "Booking created. Proceed to payment.",
+        payment,
+        checkoutUrl: payment.checkoutUrl,
+        message: "Booking created. Redirecting to payment.",
       },
       { status: 201 },
     );

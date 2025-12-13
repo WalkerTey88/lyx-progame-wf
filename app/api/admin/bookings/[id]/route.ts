@@ -9,7 +9,10 @@ function jsonError(message: string, status = 400) {
 // 本地定义 BookingStatus
 const BOOKING_STATUS_VALUES = [
   "PENDING",
+  "PAYMENT_PENDING",
   "PAID",
+  "PAYMENT_FAILED",
+  "EXPIRED",
   "CANCELLED",
   "COMPLETED",
 ] as const;

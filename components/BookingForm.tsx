@@ -24,6 +24,10 @@ type BookingResponse = {
     status: string;
     totalPrice: number;
   } | null;
+  payment?: {
+    checkoutUrl?: string | null;
+  } | null;
+  checkoutUrl?: string | null;
   message?: string;
   error?: string;
 };
@@ -118,6 +122,12 @@ export function BookingForm({ roomTypes }: Props) {
           "Booking created successfully. Proceed to payment or confirmation.",
       );
       setCreatedId(data.data.id);
+
+      const checkoutUrl = data.checkoutUrl || data.payment?.checkoutUrl;
+      if (checkoutUrl) {
+        // Redirect user to HitPay secure checkout
+        window.location.href = checkoutUrl;
+      }
     } catch (err) {
       console.error("BookingForm submit error:", err);
       setError("Unexpected error while creating booking.");

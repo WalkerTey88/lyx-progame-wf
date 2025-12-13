@@ -2,12 +2,18 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { BookingStatus } from "@prisma/client";
 
-// 告诉 Next：这个 Route 永远是动态，避免静态缓存
+// Tell Next: this route is always dynamic (avoid static caching)
 export const dynamic = "force-dynamic";
 
-// 使用普通可变数组，而不是 readonly
-const ACTIVE_BOOKING_STATUS: ("PENDING" | "PAID")[] = ["PENDING", "PAID"];
+// Booking statuses that should block availability
+const ACTIVE_BOOKING_STATUS: BookingStatus[] = [
+  BookingStatus.PENDING,
+  BookingStatus.PAYMENT_PENDING,
+  BookingStatus.PAID,
+  BookingStatus.COMPLETED,
+];
 
 export async function GET(req: NextRequest) {
   try {
@@ -17,7 +23,6 @@ export async function GET(req: NextRequest) {
     const checkInParam = searchParams.get("checkIn");
     const checkOutParam = searchParams.get("checkOut");
 
-    // 1. 参数校验
     if (!roomIdParam || !checkInParam || !checkOutParam) {
       return NextResponse.json(
         { error: "Missing roomId, checkIn or checkOut" },
@@ -29,7 +34,6 @@ export async function GET(req: NextRequest) {
     const checkIn = new Date(checkInParam);
     const checkOut = new Date(checkOutParam);
 
-    // 日期是否合法
     if (Number.isNaN(checkIn.getTime()) || Number.isNaN(checkOut.getTime())) {
       return NextResponse.json(
         { error: "Invalid checkIn or checkOut date" },
@@ -37,7 +41,6 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // 入住时间必须早于退房时间
     if (checkIn >= checkOut) {
       return NextResponse.json(
         { error: "checkIn must be earlier than checkOut" },
@@ -45,7 +48,6 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // 2. 房间是否存在 + 是否启用
     const room = await prisma.room.findUnique({
       where: { id: roomId },
     });
@@ -57,28 +59,20 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // 3. 是否有重叠 Booking（PENDING / PAID）
-    // 区间重叠条件：[A,B) 与 [C,D) 重叠 ⇔ A < D 且 C < B
+    // Overlap rule:
+    // existing.checkIn < requested.checkOut AND existing.checkOut > requested.checkIn
     const overlappingBookings = await prisma.booking.findMany({
       where: {
         roomId,
         status: { in: ACTIVE_BOOKING_STATUS },
         AND: [
-          {
-            checkIn: {
-              lt: checkOut,
-            },
-          },
-          {
-            checkOut: {
-              gt: checkIn,
-            },
-          },
+          { checkIn: { lt: checkOut } },
+          { checkOut: { gt: checkIn } },
         ],
       },
+      select: { id: true },
     });
 
-    // 当前版本：只基于 Booking 判断是否可订
     const isAvailable = overlappingBookings.length === 0;
 
     return NextResponse.json(
@@ -86,7 +80,6 @@ export async function GET(req: NextRequest) {
         available: isAvailable,
         conflicts: {
           bookings: overlappingBookings.length,
-          // 封房逻辑后续根据你的 RoomBlockDate 模型再补
           blockDates: 0,
         },
       },
