@@ -27,21 +27,36 @@ type EnsurePaymentResult = {
 };
 
 function getAppBaseUrl(): string {
-  const v =
-    process.env.APP_BASE_URL ||
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    "";
+  const v = process.env.APP_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || "";
   if (!v) throw new Error("Missing APP_BASE_URL (or NEXT_PUBLIC_SITE_URL)");
   return v.replace(/\/$/, "");
+}
+
+function getHitPayCurrency(): string {
+  // If your HitPay account is not MYR (e.g. SGD), set HITPAY_CURRENCY accordingly.
+  const v = (process.env.HITPAY_CURRENCY || "MYR").trim().toUpperCase();
+  return v || "MYR";
 }
 
 function getHitPayPaymentMethodsFromEnv(): string[] | undefined {
   // Example: HITPAY_PAYMENT_METHODS="fpx"
   const v = (process.env.HITPAY_PAYMENT_METHODS || "").trim();
   if (!v) return undefined;
-  const arr = v.split(",").map((s) => s.trim()).filter(Boolean);
+  const arr = v
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
   return arr.length ? arr : undefined;
+}
+
+function isHitPayMethodOrCurrencyError(msg: string): boolean {
+  const m = String(msg || "").toLowerCase();
+  return (
+    m.includes("selected payment method") ||
+    m.includes("payment method") ||
+    m.includes("currency is invalid") ||
+    m.includes("unavailable for your account")
+  );
 }
 
 function mapHitPayToPaymentStatus(hitpayStatus: string) {
@@ -102,9 +117,7 @@ export async function ensureHitPayPaymentForBooking(
   }
 
   // Reuse active payment
-  const active = booking.payments.find((p) =>
-    ["CREATED", "PENDING"].includes(p.status as any)
-  );
+  const active = booking.payments.find((p) => ["CREATED", "PENDING"].includes(p.status as any));
   if (active) {
     return {
       bookingId,
@@ -119,23 +132,48 @@ export async function ensureHitPayPaymentForBooking(
   const redirectUrl = `${baseUrl}/booking/return?bookingId=${encodeURIComponent(bookingId)}`;
   const webhookUrl = `${baseUrl}/api/webhooks/hitpay`;
 
-  // Critical: DO NOT force a fixed idempotencyKey by default (or you can never create a new payment after fail/expire)
   const idempotencyKey = input.idempotencyKey ? String(input.idempotencyKey) : null;
 
-  const paymentMethods = getHitPayPaymentMethodsFromEnv(); // force FPX via env
+  const currency = getHitPayCurrency();
+  const paymentMethods = getHitPayPaymentMethodsFromEnv(); // optional force via env
 
-  const pr = await hitpayCreatePaymentRequest({
-    amountMYR: senToMYR(booking.totalPrice),
-    currency: "MYR",
-    name: booking.guestName,
-    email: booking.guestEmail,
-    phone: booking.guestPhone,
-    purpose: "Walter Farm Booking",
-    referenceNumber: bookingId,
-    redirectUrl,
-    webhookUrl,
-    paymentMethods,
-  });
+  let pr: Awaited<ReturnType<typeof hitpayCreatePaymentRequest>>;
+
+  // Try with forced methods first (if provided), then fallback without payment_methods
+  try {
+    pr = await hitpayCreatePaymentRequest({
+      amountMYR: senToMYR(booking.totalPrice),
+      currency,
+      name: booking.guestName,
+      email: booking.guestEmail,
+      phone: booking.guestPhone,
+      purpose: "Walter Farm Booking",
+      referenceNumber: bookingId,
+      redirectUrl,
+      webhookUrl,
+      paymentMethods,
+    });
+  } catch (e: any) {
+    const msg = e?.message ? String(e.message) : String(e);
+
+    // If forcing method caused rejection, fallback immediately
+    if (paymentMethods && paymentMethods.length > 0 && isHitPayMethodOrCurrencyError(msg)) {
+      pr = await hitpayCreatePaymentRequest({
+        amountMYR: senToMYR(booking.totalPrice),
+        currency,
+        name: booking.guestName,
+        email: booking.guestEmail,
+        phone: booking.guestPhone,
+        purpose: "Walter Farm Booking",
+        referenceNumber: bookingId,
+        redirectUrl,
+        webhookUrl,
+        paymentMethods: undefined,
+      });
+    } else {
+      throw e;
+    }
+  }
 
   const payment = await prisma.payment.create({
     data: {
@@ -144,7 +182,7 @@ export async function ensureHitPayPaymentForBooking(
       channel,
       status: mapHitPayToPaymentStatus(pr.status) as any,
       amount: booking.totalPrice,
-      currency: "MYR",
+      currency,
       providerPaymentRequestId: pr.id,
       providerPaymentId: pr.payment_id ?? null,
       checkoutUrl: pr.url,
