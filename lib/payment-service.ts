@@ -36,6 +36,14 @@ function getAppBaseUrl(): string {
   return v.replace(/\/$/, "");
 }
 
+function getHitPayPaymentMethodsFromEnv(): string[] | undefined {
+  // Example: HITPAY_PAYMENT_METHODS="fpx"
+  const v = (process.env.HITPAY_PAYMENT_METHODS || "").trim();
+  if (!v) return undefined;
+  const arr = v.split(",").map((s) => s.trim()).filter(Boolean);
+  return arr.length ? arr : undefined;
+}
+
 function mapHitPayToPaymentStatus(hitpayStatus: string) {
   const s = normalizeHitPayStatus(hitpayStatus);
   if (s === "completed") return "COMPLETED";
@@ -50,7 +58,7 @@ function mapHitPayToBookingStatus(hitpayStatus: string) {
   if (s === "completed") return "PAID";
   if (s === "failed") return "PAYMENT_FAILED";
   if (s === "expired") return "EXPIRED";
-  if (s === "canceled") return "PAYMENT_FAILED";
+  if (s === "canceled") return "CANCELLED";
   return "PAYMENT_PENDING";
 }
 
@@ -72,10 +80,28 @@ export async function ensureHitPayPaymentForBooking(
 
   if (!booking) throw new Error("Booking not found");
 
-  if (booking.status === "CANCELLED" || booking.status === "COMPLETED") {
+  // Final states must NOT create new payment
+  if (["CANCELLED", "COMPLETED", "PAID"].includes(booking.status as any)) {
     throw new Error(`Booking status is ${booking.status}. Payment is not allowed.`);
   }
 
+  // If caller passes idempotencyKey, dedupe by it first
+  if (input.idempotencyKey) {
+    const existingByKey = await prisma.payment.findUnique({
+      where: { idempotencyKey: String(input.idempotencyKey) },
+    });
+    if (existingByKey) {
+      return {
+        bookingId,
+        paymentId: existingByKey.id,
+        providerPaymentRequestId: existingByKey.providerPaymentRequestId,
+        checkoutUrl: existingByKey.checkoutUrl ?? null,
+        status: String(existingByKey.status),
+      };
+    }
+  }
+
+  // Reuse active payment
   const active = booking.payments.find((p) =>
     ["CREATED", "PENDING"].includes(p.status as any)
   );
@@ -93,9 +119,11 @@ export async function ensureHitPayPaymentForBooking(
   const redirectUrl = `${baseUrl}/booking/return?bookingId=${encodeURIComponent(bookingId)}`;
   const webhookUrl = `${baseUrl}/api/webhooks/hitpay`;
 
-  const idempotencyKey = input.idempotencyKey || `HP:${bookingId}`;
+  // Critical: DO NOT force a fixed idempotencyKey by default (or you can never create a new payment after fail/expire)
+  const idempotencyKey = input.idempotencyKey ? String(input.idempotencyKey) : null;
 
-  // Create HitPay payment request
+  const paymentMethods = getHitPayPaymentMethodsFromEnv(); // force FPX via env
+
   const pr = await hitpayCreatePaymentRequest({
     amountMYR: senToMYR(booking.totalPrice),
     currency: "MYR",
@@ -106,9 +134,9 @@ export async function ensureHitPayPaymentForBooking(
     referenceNumber: bookingId,
     redirectUrl,
     webhookUrl,
+    paymentMethods,
   });
 
-  // Persist payment
   const payment = await prisma.payment.create({
     data: {
       bookingId,
@@ -118,13 +146,13 @@ export async function ensureHitPayPaymentForBooking(
       amount: booking.totalPrice,
       currency: "MYR",
       providerPaymentRequestId: pr.id,
+      providerPaymentId: pr.payment_id ?? null,
       checkoutUrl: pr.url,
       idempotencyKey,
       rawCreateResponse: pr as any,
     },
   });
 
-  // Move booking to PAYMENT_PENDING
   await prisma.booking.update({
     where: { id: bookingId },
     data: { status: "PAYMENT_PENDING" as any },
@@ -147,7 +175,6 @@ export async function applyHitPayWebhookV1(rawBody: string) {
   const parsed = parseHitPayWebhookV1(rawBody);
   const payloadHash = sha256Hex(rawBody);
 
-  // Idempotency: store event by payload hash
   try {
     await prisma.paymentEvent.create({
       data: {
@@ -161,11 +188,8 @@ export async function applyHitPayWebhookV1(rawBody: string) {
       },
     });
   } catch (e: any) {
-    // Prisma unique violation => already processed
-    if (e?.code !== "P2002") {
-      throw e;
-    }
-    // Continue as idempotent success
+    if (e?.code !== "P2002") throw e;
+    // duplicate webhook -> idempotent success
   }
 
   const payment = await prisma.payment.findUnique({
@@ -173,8 +197,6 @@ export async function applyHitPayWebhookV1(rawBody: string) {
   });
 
   if (!payment) {
-    // Unknown payment request id. Still return 200 to stop retries,
-    // but log it at route level.
     return { ok: true, ignored: true };
   }
 
@@ -194,7 +216,6 @@ export async function applyHitPayWebhookV1(rawBody: string) {
     data: { status: newBookingStatus as any },
   });
 
-  // attach paymentId to event if not yet
   await prisma.paymentEvent.updateMany({
     where: { payloadHash, paymentId: null },
     data: { paymentId: payment.id },

@@ -1,5 +1,4 @@
 // app/api/booking/route.ts
-
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { ensureHitPayPaymentForBooking } from "@/lib/payment-service";
@@ -10,8 +9,6 @@ export const dynamic = "force-dynamic";
 function parseDate(value: unknown): Date | null {
   if (typeof value !== "string") return null;
 
-  // 兼容 date input: "YYYY-MM-DD"
-  // 用 T00:00:00 避免不同运行时对纯日期字符串解析差异
   const normalized =
     /^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value;
 
@@ -27,8 +24,6 @@ function calculateNights(checkIn: Date, checkOut: Date): number {
   return Math.round(diff / msPerDay);
 }
 
-// GET /api/booking?id=xxx  → 查单一订单（含 room / roomType / user）
-// 兼容：GET /api/booking?bookingId=xxx（避免前端写错参数导致 400）
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id") || searchParams.get("bookingId");
@@ -57,7 +52,6 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ data: booking });
 }
 
-// POST /api/booking  → 创建预订
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => null);
@@ -119,7 +113,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 关键修复：PAYMENT_PENDING 也必须算“占用”，否则会超卖
     const statusesToBlock = ["PENDING", "PAYMENT_PENDING", "PAID", "COMPLETED"] as const;
 
     let selectedRoom: (typeof rooms)[number] | null = null;
@@ -187,10 +180,10 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    // Important: do NOT pass a fixed idempotencyKey here.
     const payment = await ensureHitPayPaymentForBooking({
       bookingId: booking.id,
       channel: "ONLINE",
-      idempotencyKey: `HP:${booking.id}`,
     });
 
     return NextResponse.json(

@@ -29,9 +29,10 @@ function ymd(v?: string) {
   return d.toISOString().slice(0, 10);
 }
 
+// Allow retry for PAYMENT_FAILED / EXPIRED
 function canProceedToPayByStatus(status: string) {
   const s = String(status || "").toUpperCase();
-  return !["CANCELLED", "COMPLETED", "PAID", "EXPIRED"].includes(s);
+  return !["CANCELLED", "COMPLETED", "PAID"].includes(s);
 }
 
 export default function PayClient({ bookingId }: { bookingId: string }) {
@@ -41,8 +42,8 @@ export default function PayClient({ bookingId }: { bookingId: string }) {
   const [checkoutUrl, setCheckoutUrl] = useState<string>("");
   const [error, setError] = useState<string>("");
 
-  // 防重复 redirect（StrictMode / rerender / 状态变化）
-  const redirectedRef = useRef(false);
+  const autoTimerRef = useRef<number | null>(null);
+  const autoTriggeredRef = useRef(false);
 
   const canPay = useMemo(() => {
     return booking ? canProceedToPayByStatus(booking.status) : false;
@@ -80,11 +81,6 @@ export default function PayClient({ bookingId }: { bookingId: string }) {
         return;
       }
 
-      if (redirectedRef.current) {
-        setLoading(false);
-        return;
-      }
-
       try {
         setError("");
         setLoading(true);
@@ -105,9 +101,14 @@ export default function PayClient({ bookingId }: { bookingId: string }) {
         if (cancelled) return;
 
         setCheckoutUrl(url);
-        redirectedRef.current = true;
 
-        window.location.assign(url);
+        // Auto redirect improves UX, but must NOT be the only path.
+        if (!autoTriggeredRef.current) {
+          autoTriggeredRef.current = true;
+          autoTimerRef.current = window.setTimeout(() => {
+            if (!cancelled) window.location.assign(url);
+          }, 1200);
+        }
       } catch (e: any) {
         if (cancelled) return;
         setError(e?.message || "Unknown error");
@@ -121,6 +122,10 @@ export default function PayClient({ bookingId }: { bookingId: string }) {
     run();
     return () => {
       cancelled = true;
+      if (autoTimerRef.current) {
+        window.clearTimeout(autoTimerRef.current);
+        autoTimerRef.current = null;
+      }
     };
   }, [bookingId]);
 
@@ -159,19 +164,35 @@ export default function PayClient({ bookingId }: { bookingId: string }) {
 
       <div style={{ marginTop: 12, padding: 12, border: "1px dashed #e5e7eb" }}>
         {loading ? <div>Loading booking…</div> : null}
-        {creatingPayment ? <div>Creating payment…</div> : null}
-
-        {!loading && !creatingPayment && checkoutUrl ? (
-          <div>
-            <div>Redirecting… If not redirected, click:</div>
-            <div style={{ marginTop: 8 }}>
-              <a href={checkoutUrl}>Open HitPay Checkout</a>
-            </div>
-          </div>
-        ) : null}
+        {creatingPayment ? <div>Preparing payment…</div> : null}
 
         {!loading && !creatingPayment && booking && !canPay ? (
           <div>Payment not required for current status.</div>
+        ) : null}
+
+        {!loading && !creatingPayment && checkoutUrl && booking && canPay ? (
+          <div>
+            <div style={{ marginBottom: 10 }}>
+              If you are not redirected automatically, click the button below.
+            </div>
+
+            <button
+              type="button"
+              onClick={() => window.location.assign(checkoutUrl)}
+              style={{
+                padding: "10px 14px",
+                border: "1px solid #111827",
+                borderRadius: 8,
+                fontWeight: 700,
+              }}
+            >
+              Continue to FPX Payment
+            </button>
+
+            <div style={{ marginTop: 10 }}>
+              <a href={checkoutUrl}>Open payment link (fallback)</a>
+            </div>
+          </div>
         ) : null}
 
         {!loading && !creatingPayment && !checkoutUrl && !error && (!booking || canPay) ? (
@@ -181,7 +202,7 @@ export default function PayClient({ bookingId }: { bookingId: string }) {
 
       <div style={{ marginTop: 12 }}>
         <Link href={`/booking/return?bookingId=${encodeURIComponent(bookingId)}`}>
-          I already paid (go to return page)
+          After paying, open the result page (if payment page doesn&apos;t return)
         </Link>
       </div>
     </div>

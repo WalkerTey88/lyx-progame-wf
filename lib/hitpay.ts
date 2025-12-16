@@ -2,7 +2,7 @@
 // HitPay Online Payments (Payment Request API + Webhook v1)
 //
 // References (HitPay docs):
-// - Create Payment Request: POST /v1/payment-requests (form-urlencoded, X-BUSINESS-API-KEY)
+// - Create Payment Request: POST /v1/payment-requests (application/json, X-BUSINESS-API-KEY)
 // - Get Payment Request Status: GET /v1/payment-requests/{request_id}
 // - Webhook v1: application/x-www-form-urlencoded payload + HMAC validation using your salt
 
@@ -24,6 +24,9 @@ export type HitPayCreatePaymentRequestInput = {
   referenceNumber: string; // map to internal booking id
   redirectUrl: string;
   webhookUrl: string;
+
+  // Optional: restrict available payment methods supported by your account, e.g. ["fpx"]
+  paymentMethods?: string[];
 };
 
 export type HitPayPaymentRequest = {
@@ -66,29 +69,40 @@ export async function hitpayCreatePaymentRequest(
 
   const url = `${apiBaseUrl.replace(/\/$/, "")}/v1/payment-requests`;
 
-  const body = new URLSearchParams();
-  body.set("amount", input.amountMYR);
-  body.set("currency", input.currency);
-  body.set("reference_number", input.referenceNumber);
-  body.set("redirect_url", input.redirectUrl);
-  body.set("webhook", input.webhookUrl);
+  const amountNumber = Number(input.amountMYR);
+  if (!Number.isFinite(amountNumber)) {
+    throw new Error(`Invalid amountMYR: ${input.amountMYR}`);
+  }
 
-  if (input.purpose) body.set("purpose", input.purpose);
-  if (input.name) body.set("name", input.name);
-  if (input.email) body.set("email", input.email);
-  if (input.phone) body.set("phone", input.phone);
+  // HitPay current docs accept JSON payload (recommended).
+  const payload: any = {
+    amount: amountNumber,
+    currency: input.currency,
+    reference_number: input.referenceNumber,
+    redirect_url: input.redirectUrl,
+    webhook: input.webhookUrl,
+    send_email: false,
+    send_sms: false,
+  };
 
-  // NOTE: We intentionally do NOT set payment_methods[] here.
-  // HitPay checkout will show methods enabled in your HitPay dashboard (FPX / TNG / DuitNow etc.).
+  if (input.purpose) payload.purpose = input.purpose;
+  if (input.name) payload.name = input.name;
+  if (input.email) payload.email = input.email;
+  if (input.phone) payload.phone = input.phone;
+
+  // Key change: allow forcing payment methods (e.g. FPX)
+  if (input.paymentMethods && input.paymentMethods.length > 0) {
+    payload.payment_methods = input.paymentMethods;
+  }
 
   const res = await fetch(url, {
     method: "POST",
     headers: {
       "X-BUSINESS-API-KEY": apiKey,
-      "Content-Type": "application/x-www-form-urlencoded",
+      "Content-Type": "application/json",
       "X-Requested-With": "XMLHttpRequest",
     },
-    body,
+    body: JSON.stringify(payload),
   });
 
   const json = (await res.json().catch(() => null)) as any;
@@ -109,6 +123,7 @@ export async function hitpayCreatePaymentRequest(
     currency: String(json.currency ?? input.currency),
     reference_number: json.reference_number ? String(json.reference_number) : undefined,
     payment_methods: Array.isArray(json.payment_methods) ? json.payment_methods.map(String) : undefined,
+    payment_id: json.payment_id ? String(json.payment_id) : undefined,
   };
 }
 
@@ -143,6 +158,7 @@ export async function hitpayGetPaymentRequest(
     currency: String(json.currency || "MYR"),
     reference_number: json.reference_number ? String(json.reference_number) : undefined,
     payment_methods: Array.isArray(json.payment_methods) ? json.payment_methods.map(String) : undefined,
+    payment_id: json.payment_id ? String(json.payment_id) : undefined,
   };
 }
 
@@ -214,7 +230,9 @@ export function sha256Hex(input: string): string {
   return crypto.createHash("sha256").update(input).digest("hex");
 }
 
-export function normalizeHitPayStatus(status: string): "pending" | "completed" | "failed" | "expired" | "canceled" {
+export function normalizeHitPayStatus(
+  status: string
+): "pending" | "completed" | "failed" | "expired" | "canceled" {
   const s = String(status || "").toLowerCase();
   if (s === "completed" || s === "succeeded") return "completed";
   if (s === "failed") return "failed";
