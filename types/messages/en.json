@@ -1,0 +1,40 @@
+{
+  "Home": {
+    "title": "Welcome to Walter Farm",
+    "subtitle": "Your peaceful farmstay experience in Segamat"
+  },
+  "Navbar": {
+    "accommodation": "Accommodation",
+    "activities": "Activities",
+    "facilities": "Facilities",
+    "gallery": "Gallery",
+    "location": "Location",
+    "booking": "Booking",
+    "contact": "Contact",
+    "menu": "Menu"
+  },
+  "Footer": {
+    "rights": "All rights reserved."
+  },
+  "Accommodation": {
+    "title": "Accommodation"
+  },
+  "Activities": {
+    "title": "Activities"
+  },
+  "Facilities": {
+    "title": "Facilities"
+  },
+  "Gallery": {
+    "title": "Gallery"
+  },
+  "Location": {
+    "title": "Location"
+  },
+  "Booking": {
+    "title": "Booking"
+  },
+  "Contact": {
+    "title": "Contact Us"
+  }
+}

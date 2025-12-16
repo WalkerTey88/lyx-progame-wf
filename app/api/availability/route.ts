@@ -1,101 +1,91 @@
 // app/api/availability/route.ts
-
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-// 告诉 Next：这个 Route 永远是动态，避免静态缓存
+// Always dynamic
 export const dynamic = "force-dynamic";
 
-// 使用普通可变数组，而不是 readonly
-const ACTIVE_BOOKING_STATUS: ("PENDING" | "PAID")[] = ["PENDING", "PAID"];
+// 不再从 @prisma/client 导入 BookingStatus，避免 enum 不同步导致 TS 报错
+const ACTIVE_BOOKING_STATUS = ["PENDING", "PAYMENT_PENDING", "PAID"] as const;
+
+function isValidYMD(v: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(v);
+}
 
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
 
-    const roomIdParam = searchParams.get("roomId");
-    const checkInParam = searchParams.get("checkIn");
-    const checkOutParam = searchParams.get("checkOut");
+    const roomTypeId = searchParams.get("roomTypeId");
+    const checkIn = searchParams.get("checkIn");
+    const checkOut = searchParams.get("checkOut");
 
-    // 1. 参数校验
-    if (!roomIdParam || !checkInParam || !checkOutParam) {
+    if (!roomTypeId || !checkIn || !checkOut) {
       return NextResponse.json(
-        { error: "Missing roomId, checkIn or checkOut" },
+        { error: "Missing roomTypeId, checkIn or checkOut" },
         { status: 400 }
       );
     }
 
-    const roomId = roomIdParam;
-    const checkIn = new Date(checkInParam);
-    const checkOut = new Date(checkOutParam);
-
-    // 日期是否合法
-    if (Number.isNaN(checkIn.getTime()) || Number.isNaN(checkOut.getTime())) {
+    if (!isValidYMD(checkIn) || !isValidYMD(checkOut)) {
       return NextResponse.json(
-        { error: "Invalid checkIn or checkOut date" },
+        { error: "Invalid date format. Expected YYYY-MM-DD." },
         { status: 400 }
       );
     }
 
-    // 入住时间必须早于退房时间
-    if (checkIn >= checkOut) {
+    const inDate = new Date(`${checkIn}T00:00:00.000Z`);
+    const outDate = new Date(`${checkOut}T00:00:00.000Z`);
+
+    if (Number.isNaN(inDate.getTime()) || Number.isNaN(outDate.getTime())) {
+      return NextResponse.json({ error: "Invalid dates." }, { status: 400 });
+    }
+
+    if (outDate.getTime() <= inDate.getTime()) {
       return NextResponse.json(
-        { error: "checkIn must be earlier than checkOut" },
+        { error: "checkOut must be after checkIn." },
         { status: 400 }
       );
     }
 
-    // 2. 房间是否存在 + 是否启用
-    const room = await prisma.room.findUnique({
-      where: { id: roomId },
+    // 找到该房型可用房间：只要存在任意一间 room 在该区间没有“活跃订单”占用即可
+    const rooms = await prisma.room.findMany({
+      where: { roomTypeId, isActive: true },
+      select: { id: true, roomNumber: true },
+      orderBy: { roomNumber: "asc" },
     });
 
-    if (!room || !room.isActive) {
+    if (rooms.length === 0) {
       return NextResponse.json(
-        { error: "Room not found or inactive" },
-        { status: 404 }
+        { ok: true, available: false, reason: "No active rooms for this room type." },
+        { status: 200 }
       );
     }
 
-    // 3. 是否有重叠 Booking（PENDING / PAID）
-    // 区间重叠条件：[A,B) 与 [C,D) 重叠 ⇔ A < D 且 C < B
-    const overlappingBookings = await prisma.booking.findMany({
-      where: {
-        roomId,
-        status: { in: ACTIVE_BOOKING_STATUS },
-        AND: [
-          {
-            checkIn: {
-              lt: checkOut,
-            },
-          },
-          {
-            checkOut: {
-              gt: checkIn,
-            },
-          },
-        ],
-      },
-    });
-
-    // 当前版本：只基于 Booking 判断是否可订
-    const isAvailable = overlappingBookings.length === 0;
-
-    return NextResponse.json(
-      {
-        available: isAvailable,
-        conflicts: {
-          bookings: overlappingBookings.length,
-          // 封房逻辑后续根据你的 RoomBlockDate 模型再补
-          blockDates: 0,
+    // 逐房间判断是否被占用（简单可靠，房量不大时足够）
+    for (const r of rooms) {
+      const count = await prisma.booking.count({
+        where: {
+          roomId: r.id,
+          status: { in: [...ACTIVE_BOOKING_STATUS] as any },
+          checkIn: { lt: outDate },
+          checkOut: { gt: inDate },
         },
-      },
-      { status: 200 }
-    );
-  } catch (error) {
-    console.error("[AVAILABILITY_GET_ERROR]", error);
+      });
+
+      if (count === 0) {
+        return NextResponse.json(
+          { ok: true, available: true, room: { id: r.id, roomNumber: r.roomNumber } },
+          { status: 200 }
+        );
+      }
+    }
+
+    return NextResponse.json({ ok: true, available: false }, { status: 200 });
+  } catch (e: any) {
+    console.error("[GET /api/availability] error:", e);
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: e?.message || "Internal Server Error" },
       { status: 500 }
     );
   }

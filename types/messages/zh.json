@@ -1,0 +1,40 @@
+{
+  "Home": {
+    "title": "欢迎来到 Walter Farm",
+    "subtitle": "您在昔加末的宁静农场住宿体验"
+  },
+  "Navbar": {
+    "accommodation": "住宿",
+    "activities": "活动",
+    "facilities": "设施",
+    "gallery": "相册",
+    "location": "位置",
+    "booking": "预订",
+    "contact": "联系我们",
+    "menu": "菜单"
+  },
+  "Footer": {
+    "rights": "版权所有。"
+  },
+  "Accommodation": {
+    "title": "住宿"
+  },
+  "Activities": {
+    "title": "活动"
+  },
+  "Facilities": {
+    "title": "设施"
+  },
+  "Gallery": {
+    "title": "相册"
+  },
+  "Location": {
+    "title": "位置"
+  },
+  "Booking": {
+    "title": "预订"
+  },
+  "Contact": {
+    "title": "联系我们"
+  }
+}

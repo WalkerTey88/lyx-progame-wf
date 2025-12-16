@@ -1,21 +1,25 @@
 // app/api/admin/room-types/[id]/route.ts
-import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { requireAdmin } from "@/lib/admin-auth";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function PATCH(
   req: NextRequest,
   context: { params: { id: string } },
 ) {
+  const guard = await requireAdmin(req);
+  if (guard) return guard;
+
   const id = context.params.id;
 
   try {
     const body = await req.json().catch(() => null);
 
-    if (!body || typeof body !== 'object') {
-      return NextResponse.json(
-        { error: 'Invalid JSON body.' },
-        { status: 400 },
-      );
+    if (!body || typeof body !== "object") {
+      return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
     }
 
     const { name, description, basePrice, capacity } = body as {
@@ -26,15 +30,15 @@ export async function PATCH(
     };
 
     const data: any = {};
-    if (typeof name === 'string') data.name = name;
+    if (typeof name === "string") data.name = name;
     if (description !== undefined) data.description = description;
-    if (typeof basePrice === 'number') data.basePrice = basePrice;
-    if (typeof capacity === 'number') data.capacity = capacity;
+    if (typeof basePrice === "number") data.basePrice = basePrice;
+    if (typeof capacity === "number") data.capacity = capacity;
 
     if (Object.keys(data).length === 0) {
       return NextResponse.json(
-        { error: 'No valid fields to update.' },
-        { status: 400 },
+        { error: "No valid fields to update." },
+        { status: 400 }
       );
     }
 
@@ -47,8 +51,8 @@ export async function PATCH(
   } catch (error) {
     console.error(`PATCH /api/admin/room-types/${id} error`, error);
     return NextResponse.json(
-      { error: 'Failed to update room type.' },
-      { status: 500 },
+      { error: "Failed to update room type." },
+      { status: 500 }
     );
   }
 }

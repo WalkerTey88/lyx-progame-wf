@@ -1,8 +1,15 @@
 // app/api/admin/room-types/route.ts
-import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { requireAdmin } from "@/lib/admin-auth";
 
-export async function GET() {
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+export async function GET(req: NextRequest) {
+  const guard = await requireAdmin(req);
+  if (guard) return guard;
+
   try {
     const roomTypes = await prisma.roomType.findMany({
       include: {
@@ -11,7 +18,7 @@ export async function GET() {
         },
       },
       orderBy: {
-        basePrice: 'asc',
+        basePrice: "asc",
       },
     });
 
@@ -26,23 +33,23 @@ export async function GET() {
       })),
     });
   } catch (error) {
-    console.error('GET /api/admin/room-types error', error);
+    console.error("GET /api/admin/room-types error", error);
     return NextResponse.json(
-      { error: 'Failed to load room types.' },
-      { status: 500 },
+      { error: "Failed to load room types." },
+      { status: 500 }
     );
   }
 }
 
 export async function POST(req: NextRequest) {
+  const guard = await requireAdmin(req);
+  if (guard) return guard;
+
   try {
     const body = await req.json().catch(() => null);
 
-    if (!body || typeof body !== 'object') {
-      return NextResponse.json(
-        { error: 'Invalid JSON body.' },
-        { status: 400 },
-      );
+    if (!body || typeof body !== "object") {
+      return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
     }
 
     const { name, description, basePrice, capacity } = body as {
@@ -52,13 +59,16 @@ export async function POST(req: NextRequest) {
       capacity?: number;
     };
 
-    if (!name || typeof basePrice !== 'number' || typeof capacity !== 'number') {
+    if (
+      !name ||
+      typeof basePrice !== "number" ||
+      typeof capacity !== "number"
+    ) {
       return NextResponse.json(
         {
-          error:
-            'name, basePrice (number) and capacity (number) are required.',
+          error: "name, basePrice (number) and capacity (number) are required.",
         },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -74,10 +84,10 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ roomType }, { status: 201 });
   } catch (error) {
-    console.error('POST /api/admin/room-types error', error);
+    console.error("POST /api/admin/room-types error", error);
     return NextResponse.json(
-      { error: 'Failed to create room type.' },
-      { status: 500 },
+      { error: "Failed to create room type." },
+      { status: 500 }
     );
   }
 }

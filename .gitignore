@@ -53,4 +53,7 @@ Thumbs.db
  tmp/
 
 # --- Prisma (只忽略生成的客户端目录；schema 和 migrations 要提交) ---
- prisma/generated/
+ prisma/generated/walter-farm-step2-hitpay.zip
+.env.*
+.env
+.env.*
