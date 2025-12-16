@@ -27,15 +27,13 @@ type EnsurePaymentResult = {
 };
 
 function getAppBaseUrl(): string {
-  const v = process.env.APP_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || "";
+  const v =
+    process.env.APP_BASE_URL ||
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    "";
   if (!v) throw new Error("Missing APP_BASE_URL (or NEXT_PUBLIC_SITE_URL)");
   return v.replace(/\/$/, "");
-}
-
-function getHitPayCurrency(): string {
-  // If your HitPay account is not MYR (e.g. SGD), set HITPAY_CURRENCY accordingly.
-  const v = (process.env.HITPAY_CURRENCY || "MYR").trim().toUpperCase();
-  return v || "MYR";
 }
 
 function getHitPayPaymentMethodsFromEnv(): string[] | undefined {
@@ -49,14 +47,14 @@ function getHitPayPaymentMethodsFromEnv(): string[] | undefined {
   return arr.length ? arr : undefined;
 }
 
-function isHitPayMethodOrCurrencyError(msg: string): boolean {
-  const m = String(msg || "").toLowerCase();
-  return (
-    m.includes("selected payment method") ||
-    m.includes("payment method") ||
-    m.includes("currency is invalid") ||
-    m.includes("unavailable for your account")
-  );
+function shouldFallbackWithoutPaymentMethods(err: unknown): boolean {
+  const msg = (err as any)?.message ? String((err as any).message) : String(err || "");
+  const m = msg.toLowerCase();
+  // HitPay 常见报错：payment method unavailable / currency invalid
+  if (m.includes("payment method") && (m.includes("unavailable") || m.includes("invalid"))) return true;
+  if (m.includes("selected payment method") && m.includes("unavailable")) return true;
+  if (m.includes("currency") && m.includes("invalid")) return true;
+  return false;
 }
 
 function mapHitPayToPaymentStatus(hitpayStatus: string) {
@@ -117,7 +115,9 @@ export async function ensureHitPayPaymentForBooking(
   }
 
   // Reuse active payment
-  const active = booking.payments.find((p) => ["CREATED", "PENDING"].includes(p.status as any));
+  const active = booking.payments.find((p) =>
+    ["CREATED", "PENDING"].includes(p.status as any)
+  );
   if (active) {
     return {
       bookingId,
@@ -132,18 +132,18 @@ export async function ensureHitPayPaymentForBooking(
   const redirectUrl = `${baseUrl}/booking/return?bookingId=${encodeURIComponent(bookingId)}`;
   const webhookUrl = `${baseUrl}/api/webhooks/hitpay`;
 
+  // Critical: DO NOT force a fixed idempotencyKey by default (or you can never create a new payment after fail/expire)
   const idempotencyKey = input.idempotencyKey ? String(input.idempotencyKey) : null;
 
-  const currency = getHitPayCurrency();
-  const paymentMethods = getHitPayPaymentMethodsFromEnv(); // optional force via env
+  const paymentMethods = getHitPayPaymentMethodsFromEnv(); // optional (e.g. ["fpx"])
 
-  let pr: Awaited<ReturnType<typeof hitpayCreatePaymentRequest>>;
-
-  // Try with forced methods first (if provided), then fallback without payment_methods
+  // 1) First try: honor env paymentMethods (force FPX if configured)
+  // 2) If HitPay rejects (method unavailable / currency invalid): retry without paymentMethods
+  let pr: any;
   try {
     pr = await hitpayCreatePaymentRequest({
       amountMYR: senToMYR(booking.totalPrice),
-      currency,
+      currency: "MYR",
       name: booking.guestName,
       email: booking.guestEmail,
       phone: booking.guestPhone,
@@ -153,14 +153,16 @@ export async function ensureHitPayPaymentForBooking(
       webhookUrl,
       paymentMethods,
     });
-  } catch (e: any) {
-    const msg = e?.message ? String(e.message) : String(e);
+  } catch (e) {
+    if (paymentMethods && paymentMethods.length > 0 && shouldFallbackWithoutPaymentMethods(e)) {
+      console.warn(
+        "[ensureHitPayPaymentForBooking] payment_methods rejected, fallback to HitPay default methods. methods=",
+        paymentMethods
+      );
 
-    // If forcing method caused rejection, fallback immediately
-    if (paymentMethods && paymentMethods.length > 0 && isHitPayMethodOrCurrencyError(msg)) {
       pr = await hitpayCreatePaymentRequest({
         amountMYR: senToMYR(booking.totalPrice),
-        currency,
+        currency: "MYR",
         name: booking.guestName,
         email: booking.guestEmail,
         phone: booking.guestPhone,
@@ -168,7 +170,7 @@ export async function ensureHitPayPaymentForBooking(
         referenceNumber: bookingId,
         redirectUrl,
         webhookUrl,
-        paymentMethods: undefined,
+        // no paymentMethods
       });
     } else {
       throw e;
@@ -182,7 +184,7 @@ export async function ensureHitPayPaymentForBooking(
       channel,
       status: mapHitPayToPaymentStatus(pr.status) as any,
       amount: booking.totalPrice,
-      currency,
+      currency: "MYR",
       providerPaymentRequestId: pr.id,
       providerPaymentId: pr.payment_id ?? null,
       checkoutUrl: pr.url,
