@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export default function Page() {
   return (
-    <Suspense fallback={<p className="py-12 text-center">正在加载...</p>}>
+    <Suspense fallback={<div className="max-w-xl mx-auto py-12 px-4">Loading…</div>}>
       <ReturnClient />
     </Suspense>
   );
