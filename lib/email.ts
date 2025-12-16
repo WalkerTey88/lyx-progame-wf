@@ -1,66 +1,71 @@
 // lib/email.ts
+// P0 目标：构建必过、生产可用、缺失配置时不阻断主流程（只跳过邮件发送）
 
-import { Resend } from "resend";
-
-const resendApiKey = process.env.RESEND_API_KEY;
-const fromEmail =
-  process.env.RESEND_FROM_EMAIL || "booking@walter-farm.com";
-
-/**
- * 封装的邮件发送客户端。
- * 如果没有配置 RESEND_API_KEY，则不会真正发送邮件，只打印警告。
- */
-const resend = resendApiKey ? new Resend(resendApiKey) : null;
-
-if (!resendApiKey) {
-  // 开发 / 测试环境可以接受，只是不会发邮件
-  console.warn(
-    "[email] RESEND_API_KEY is not set. Email sending is DISABLED in this environment."
-  );
-}
-
-export interface SendBookingEmailParams {
-  to: string;
+type SendEmailInput = {
+  to: string | string[];
   subject: string;
-  html: string;
-}
+  html?: string;
+  text?: string;
+  replyTo?: string;
+};
+
+type SendEmailResult =
+  | { ok: true; provider: "resend"; id?: string }
+  | { ok: true; provider: "noop"; reason: string }
+  | { ok: false; provider: "resend"; status?: number; error: string };
+
+const RESEND_API_KEY = process.env.RESEND_API_KEY;
+const RESEND_FROM_EMAIL = process.env.RESEND_FROM_EMAIL || "booking@walter-farm.com";
 
 /**
- * 发送预订相关邮件（如预订确认邮件）。
- *
- * 返回统一结构：
- *  - { success: true, result: ... }   发送成功
- *  - { success: false, disabled: true }  邮件功能被禁用（无 API KEY）
- *  - { success: false, error }       调用 Resend 失败
+ * 发送邮件（Resend REST API）
+ * - 若未配置 RESEND_API_KEY：返回 noop，不抛错（避免阻断下单/支付主链路）
+ * - 若调用失败：返回 ok:false，让上层决定是否降级处理
  */
-export async function sendBookingEmail(
-  params: SendBookingEmailParams
-): Promise<
-  | { success: true; result: unknown }
-  | { success: false; disabled: true }
-  | { success: false; error: unknown }
-> {
-  const { to, subject, html } = params;
-
-  // 没配置 Key：直接返回，不抛异常，避免阻断主业务流程
-  if (!resend) {
-    console.warn(
-      "[email] Attempted to send email but RESEND_API_KEY is not configured."
-    );
-    return { success: false, disabled: true };
+export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult> {
+  if (!RESEND_API_KEY) {
+    return { ok: true, provider: "noop", reason: "RESEND_API_KEY not set" };
   }
 
+  const payload: Record<string, unknown> = {
+    from: RESEND_FROM_EMAIL,
+    to: input.to,
+    subject: input.subject,
+  };
+
+  if (input.html) payload.html = input.html;
+  if (input.text) payload.text = input.text;
+  if (input.replyTo) payload.reply_to = input.replyTo;
+
   try {
-    const result = await resend.emails.send({
-      from: fromEmail,
-      to,
-      subject,
-      html,
+    const resp = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${RESEND_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+      // 关键：不要缓存
+      cache: "no-store",
     });
 
-    return { success: true, result };
-  } catch (error) {
-    console.error("[email] Failed to send email via Resend:", error);
-    return { success: false, error };
+    const data = (await resp.json().catch(() => ({}))) as any;
+
+    if (!resp.ok) {
+      return {
+        ok: false,
+        provider: "resend",
+        status: resp.status,
+        error: data?.message || `Resend API error (status=${resp.status})`,
+      };
+    }
+
+    return { ok: true, provider: "resend", id: data?.id };
+  } catch (e: any) {
+    return {
+      ok: false,
+      provider: "resend",
+      error: e?.message || "Network error calling Resend",
+    };
   }
 }

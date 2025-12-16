@@ -1,0 +1,33 @@
+############################################################
+# Database
+############################################################
+DATABASE_URL="postgresql://USER:PASSWORD@HOST:5432/DB?sslmode=require"
+
+############################################################
+# Site Base URL (用于拼 redirect_url / webhookUrl)
+# 二选一即可：建议用 NEXT_PUBLIC_SITE_URL
+############################################################
+NEXT_PUBLIC_SITE_URL="https://your-domain.vercel.app"
+# APP_BASE_URL="https://your-domain.vercel.app"
+
+############################################################
+# HitPay
+# Sandbox: https://api.sandbox.hit-pay.com
+# Production: https://api.hit-pay.com
+############################################################
+HITPAY_API_BASE_URL="https://api.sandbox.hit-pay.com"
+HITPAY_API_KEY="REPLACE_ME"
+HITPAY_SALT="REPLACE_ME"
+
+############################################################
+# Email (Resend)
+############################################################
+RESEND_API_KEY="REPLACE_ME"
+RESEND_FROM_EMAIL="booking@yourdomain.com"
+
+############################################################
+# Auth / Admin
+############################################################
+AUTH_SECRET="REPLACE_ME_LONG_RANDOM"
+ADMIN_EMAIL="admin@yourdomain.com"
+ADMIN_PASSWORD="REPLACE_ME_STRONG_PASSWORD"

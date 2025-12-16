@@ -13,17 +13,22 @@ function getJwtSecretKey() {
   return new TextEncoder().encode(secret);
 }
 
-// 这里写死一组 Admin 账号密码（可被 .env 覆盖）
-const ADMIN_EMAIL =
-  process.env.ADMIN_EMAIL ?? "admin@walterfarm.local";
-const ADMIN_PASSWORD =
-  process.env.ADMIN_PASSWORD ?? "admin123456789";
-
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
+    const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
+    const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+
+    // 生产/开发一律要求显式配置，禁止默认账号密码
+    if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
+      return NextResponse.json(
+        { error: "Admin credentials not configured." },
+        { status: 500 }
+      );
+    }
+
     const { email, password } = await req.json();
 
     if (!email || !password) {
@@ -41,9 +46,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 确保数据库里存在对应 Admin 用户（没有就创建，有就修正为 ADMIN 角色和当前密码）
+    // 确保数据库里存在对应 Admin 用户（没有就创建，有就保证 role=ADMIN）
     let user = await prisma.user.findUnique({
-      where: { email: ADMIN_EMAIL },
+      where: { email: ADMIN_EMAIL }
     });
 
     if (!user) {
@@ -51,19 +56,15 @@ export async function POST(req: NextRequest) {
         data: {
           email: ADMIN_EMAIL,
           name: "Walter Farm Admin",
-          password: ADMIN_PASSWORD, // 简单明文版；后面你要的话我们再换成 hash
-          role: "ADMIN",
-        },
+          password: null, // 不存明文密码；密码以 env 为准
+          role: "ADMIN"
+        }
       });
     } else {
-      // 保证角色和密码是我们期望的
-      if (user.role !== "ADMIN" || user.password !== ADMIN_PASSWORD) {
+      if (user.role !== "ADMIN") {
         user = await prisma.user.update({
           where: { id: user.id },
-          data: {
-            role: "ADMIN",
-            password: ADMIN_PASSWORD,
-          },
+          data: { role: "ADMIN" }
         });
       }
     }
@@ -71,7 +72,7 @@ export async function POST(req: NextRequest) {
     // 签发 JWT
     const token = await new SignJWT({
       userId: user.id,
-      role: user.role,
+      role: user.role
     })
       .setProtectedHeader({ alg: "HS256" })
       .setIssuedAt()
@@ -83,9 +84,9 @@ export async function POST(req: NextRequest) {
     res.cookies.set(SESSION_COOKIE_NAME, token, {
       httpOnly: true,
       sameSite: "lax",
-      secure: false, // 本地开发；上生产要改 true
+      secure: process.env.NODE_ENV === "production",
       path: "/",
-      maxAge: 7 * 24 * 60 * 60,
+      maxAge: 7 * 24 * 60 * 60
     });
 
     return res;
