@@ -1,0 +1,6 @@
+BRANCH: fix/payment-closed-loop-2nd
+BASE: origin/main
+HEAD: c77d00b
+
+== CHANGED FILES ==
+

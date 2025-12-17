@@ -1,0 +1,19 @@
+ M .env.example
+ M README.md
+ M lib/email.ts
+ M package-lock.json
+ M package.json
+ M prisma/schema.prisma
+ M types/walter.ts
+?? app/api/payments/
+?? app/api/webhooks/
+?? app/booking/pay/
+?? "e URL)"
+?? emails/
+?? end
+?? lib/payment-service.ts
+?? lib/resend-api.ts
+?? lib/stripe.ts
+?? prisma/migrations/20251217051218_sync_after_reset/
+?? prisma/migrations/20251217061711_expand_booking_status/
+?? reports/

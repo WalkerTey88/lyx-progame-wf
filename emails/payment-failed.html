@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Payment Failed - Walter Farm</title>
+</head>
+<body style="font-family: sans-serif; line-height: 1.6; color: #333;">
+  <h2>❌ Payment Failed</h2>
+  <p>Dear {{customerName}},</p>
+  <p>Unfortunately, your payment for the following booking was not successful:</p>
+
+  <h3>Booking Details</h3>
+  <ul>
+    <li><strong>Booking ID:</strong> {{bookingId}}</li>
+    <li><strong>Room:</strong> {{roomType}}</li>
+    <li><strong>Check-in:</strong> {{checkInDate}}</li>
+    <li><strong>Check-out:</strong> {{checkOutDate}}</li>
+    <li><strong>Amount Due:</strong> {{totalAmount}}</li>
+  </ul>
+
+  <p><a href="{{retryPaymentLink}}" style="padding: 10px 15px; background: #dc3545; color: #fff; text-decoration: none;">Retry Payment</a></p>
+
+  <h4>Need Help?</h4>
+  <p><strong>Contact:</strong> {{contactNumber}} | <a href="mailto:support@lyx-walkertey.pro">support@lyx-walkertey.pro</a></p>
+  <p><em>This is an automated message. Please do not reply.</em></p>
+
+  <footer style="font-size: 12px; margin-top: 30px;">
+    © 2025 LYX Program Co. All rights reserved.
+  </footer>
+</body>
+</html>

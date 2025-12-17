@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Booking Confirmation - Walter Farm</title>
+</head>
+<body style="font-family: sans-serif; line-height: 1.6; color: #333;">
+  <h2>✅ Booking Confirmed</h2>
+  <p>Dear {{customerName}},</p>
+  <p>Thank you for your reservation at <strong>Walter Farm</strong>.</p>
+
+  <h3>Booking Details</h3>
+  <ul>
+    <li><strong>Booking ID:</strong> {{bookingId}}</li>
+    <li><strong>Room:</strong> {{roomType}}</li>
+    <li><strong>Guests:</strong> {{guestCount}}</li>
+    <li><strong>Check-in:</strong> {{checkInDate}}</li>
+    <li><strong>Check-out:</strong> {{checkOutDate}}</li>
+  </ul>
+
+  <h3>Payment Summary</h3>
+  <ul>
+    <li><strong>Status:</strong> Paid</li>
+    <li><strong>Amount:</strong> {{totalAmount}}</li>
+    <li><strong>Method:</strong> {{paymentMethod}}</li>
+    <li><strong>Transaction ID:</strong> {{transactionId}}</li>
+  </ul>
+
+  <p><a href="{{bookingLink}}" style="padding: 10px 15px; background: #28a745; color: #fff; text-decoration: none;">View Booking</a></p>
+
+  <h4>Cancellation Policy</h4>
+  <p>All bookings are final and non-refundable. Please contact us if you need assistance.</p>
+
+  <hr />
+  <p><strong>Support:</strong> {{contactNumber}} | <a href="mailto:support@lyx-walkertey.pro">support@lyx-walkertey.pro</a></p>
+  <p><em>This is an automated message. Please do not reply.</em></p>
+
+  <footer style="font-size: 12px; margin-top: 30px;">
+    © 2025 LYX Program Co. All rights reserved.
+  </footer>
+</body>
+</html>

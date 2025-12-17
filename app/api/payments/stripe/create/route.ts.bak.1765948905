@@ -1,0 +1,98 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { paymentService } from '@/lib/payment-service';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
+import { prisma } from '@/lib/prisma';
+
+export async function POST(request: NextRequest) {
+  const startTime = Date.now();
+  
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.email) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+    
+    const body = await request.json().catch(() => null);
+    if (!body || !body.bookingId) {
+      return NextResponse.json(
+        { error: 'Missing bookingId' },
+        { status: 400 }
+      );
+    }
+    
+    const { bookingId, amount, currency = 'MYR', metadata = {} } = body;
+    
+    const booking = await prisma.booking.findUnique({
+      where: { id: bookingId },
+      select: { guestEmail: true, status: true, totalPrice: true }
+    });
+    
+    if (!booking) {
+      return NextResponse.json(
+        { error: 'Booking not found' },
+        { status: 404 }
+      );
+    }
+    
+    if (booking.guestEmail !== session.user.email) {
+      return NextResponse.json(
+        { error: 'Access denied' },
+        { status: 403 }
+      );
+    }
+    
+    const paymentAmount = amount || (booking.totalPrice / 100);
+    
+    const result = await paymentService.createPaymentIntent({
+      bookingId,
+      amount: paymentAmount,
+      currency,
+      customerEmail: session.user.email,
+      customerName: session.user.name,
+      metadata: {
+        userId: session.user.id,
+        userEmail: session.user.email,
+        ...metadata
+      }
+    });
+    
+    const duration = Date.now() - startTime;
+    
+    if (result.success) {
+      return NextResponse.json({
+        success: true,
+        paymentId: result.paymentId,
+        clientSecret: result.clientSecret,
+        requiresAction: result.requiresAction,
+        duration
+      });
+    } else {
+      return NextResponse.json({
+        success: false,
+        error: result.error,
+        duration
+      }, { status: 400 });
+    }
+    
+  } catch (error: any) {
+    const duration = Date.now() - startTime;
+    
+    console.error('Payment creation error:', {
+      error: error.message,
+      stack: error.stack,
+      duration
+    });
+    
+    return NextResponse.json({
+      success: false,
+      error: 'Internal server error',
+      duration
+    }, { status: 500 });
+  }
+}
+
+export const dynamic = 'force-dynamic';
