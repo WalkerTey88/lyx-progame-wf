@@ -1,0 +1,12 @@
+export default function Home() {
+  return (
+    <html>
+      <body>
+        <h1>✅ Walter Farm 正在运行！</h1>
+        <p>服务器时间: {new Date().toLocaleString()}</p>
+        <p>本地: http://localhost:3000</p>
+        <p>远程: https://codespaces-1d45cc-3000.app.github.dev/</p>
+      </body>
+    </html>
+  )
+}

@@ -1,66 +1,72 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { paymentService } from '@/lib/payment-service';
-import { headers } from 'next/headers';
+import { NextRequest, NextResponse } from "next/server";
+import Stripe from "stripe";
+import { prisma } from "@/lib/prisma";
+import { PaymentService } from "@/lib/payment-service";
 
-export const dynamic = 'force-dynamic';
-export const runtime = 'nodejs';
+function mustEnv(name: string): string {
+  const v = process.env[name];
+  if (!v) {
+    throw new Error(`Missing environment variable: ${name}`);
+  }
+  return v;
+}
+
+const stripe = new Stripe(mustEnv("STRIPE_SECRET_KEY"), {
+  apiVersion: "2024-12-18.acacia",
+});
+
+const webhookSecret = mustEnv("STRIPE_WEBHOOK_SECRET");
 
 export async function POST(request: NextRequest) {
-  const startTime = Date.now();
-  
+  const payload = await request.text();
+  const signature = request.headers.get("stripe-signature") || "";
+
+  let event: Stripe.Event;
+
   try {
-    const rawBody = await request.text();
-    
-    const headersList = await headers();
-    const signature = headersList.get('stripe-signature');
-    
-    if (!signature) {
-      console.error('Missing stripe-signature header');
-      return NextResponse.json(
-        { error: 'Missing signature' },
-        { status: 400 }
-      );
+    event = stripe.webhooks.constructEvent(payload, signature, webhookSecret);
+  } catch (err: any) {
+    console.error(`Webhook signature verification failed:`, err.message);
+    return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
+  }
+
+  const paymentService = new PaymentService();
+
+  try {
+    switch (event.type) {
+      case "payment_intent.succeeded":
+        const paymentIntentSucceeded = event.data.object as Stripe.PaymentIntent;
+        await paymentService.handleWebhook({
+          type: "payment_intent.succeeded",
+          data: paymentIntentSucceeded,
+        });
+        break;
+      case "payment_intent.payment_failed":
+        const paymentIntentFailed = event.data.object as Stripe.PaymentIntent;
+        await paymentService.handleWebhook({
+          type: "payment_intent.payment_failed",
+          data: paymentIntentFailed,
+        });
+        break;
+      case "charge.refunded":
+        const chargeRefunded = event.data.object as Stripe.Charge;
+        await paymentService.handleWebhook({
+          type: "charge.refunded",
+          data: chargeRefunded,
+        });
+        break;
+      default:
+        console.log(`Unhandled event type: ${event.type}`);
     }
-    
-    console.log('Stripe webhook received:', {
-      bodyLength: rawBody.length,
-      signature: signature.substring(0, 30) + '...',
-      timestamp: new Date().toISOString()
-    });
-    
-    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
-    const success = await paymentService.handleWebhookEvent(
-      rawBody,
-      signature,
-      webhookSecret
-    );
-    
-    const duration = Date.now() - startTime;
-    
-    if (success) {
-      return NextResponse.json(
-        { received: true, duration },
-        { status: 200 }
-      );
-    } else {
-      return NextResponse.json(
-        { error: 'Webhook processing failed', duration },
-        { status: 400 }
-      );
-    }
-    
+
+    return NextResponse.json({ received: true });
   } catch (error: any) {
-    const duration = Date.now() - startTime;
-    
-    console.error('Webhook processing error:', {
-      error: error.message,
-      stack: error.stack,
-      duration
-    });
-    
+    console.error("Error processing webhook:", error);
     return NextResponse.json(
-      { error: 'Webhook handler failed', duration },
+      { error: "Webhook handler failed" },
       { status: 500 }
     );
   }
 }
+
+export const dynamic = "force-dynamic";

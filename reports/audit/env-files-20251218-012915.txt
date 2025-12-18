@@ -1,0 +1,5 @@
+./.env.example
+./.env.local
+./lyx-progame-wf/.env
+./lyx-progame-wf/.env.example
+./reports/ops/full-files/.env.example

@@ -22,7 +22,7 @@ export default async function PayBookingPage({
     booking.roomType?.name ||
     (booking.room ? `Room ${booking.room.roomNumber}` : "Room");
 
-  const currency = (booking.currency || process.env.BOOKING_CURRENCY || "MYR").toUpperCase();
+  const currency = (process.env.BOOKING_CURRENCY || "MYR").toUpperCase();
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-10">

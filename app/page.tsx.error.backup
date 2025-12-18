@@ -1,0 +1,36 @@
+"use client"
+
+import { useState, useEffect } from 'react'
+
+export default function HomePage() {
+  const [mounted, setMounted] = useState(false)
+  
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  return (
+    <div>
+      <h1>✅ Walter Farm Payment System</h1>
+      <p>状态: 正常运行</p>
+      <p>环境: {process.env.NODE_ENV}</p>
+      {mounted && <p>客户端时间: {new Date().toLocaleString()}</p>}
+      <p>Codespace: urban-halibut-69wvw5676rjwc4v4r</p>
+      
+      <div style={{ marginTop: '2rem' }}>
+        <h3>快速导航:</h3>
+        <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
+          <a href="/login" style={{ padding: '10px 20px', background: '#0070f3', color: 'white', borderRadius: '5px', textDecoration: 'none' }}>
+            登录
+          </a>
+          <a href="/admin" style={{ padding: '10px 20px', background: '#28a745', color: 'white', borderRadius: '5px', textDecoration: 'none' }}>
+            管理后台
+          </a>
+          <a href="/booking" style={{ padding: '10px 20px', background: '#6f42c1', color: 'white', borderRadius: '5px', textDecoration: 'none' }}>
+            预订系统
+          </a>
+        </div>
+      </div>
+    </div>
+  )
+}
